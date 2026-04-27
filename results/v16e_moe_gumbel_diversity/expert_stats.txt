@@ -1,0 +1,49 @@
+v16e MoE EXPERT ANALYSIS
+============================================================
+
+EXPERT UTILIZATION (test set)
+----------------------------------------
+  Expert 0: 405 verbs (386 reg, 19 irreg), accuracy 376/405 (92.8%)
+  Expert 1: 0 verbs (0 reg, 0 irreg), accuracy 0/0 (0.0%)
+  Expert 2: 0 verbs (0 reg, 0 irreg), accuracy 0/0 (0.0%)
+  Expert 3: 0 verbs (0 reg, 0 irreg), accuracy 0/0 (0.0%)
+
+OVERALL ACCURACY
+----------------------------------------
+  Regular:   367/386 (95.1%)
+  Irregular: 9/19 (47.4%)
+  Balanced:  71.2%
+
+CORRECT IRREGULAR PREDICTIONS (9 total)
+----------------------------------------
+  Expert 0: spIt -> sp&t  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: ri:raIt -> ri:r@Ut  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: @Uv@kVm -> @Uv@keIm  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: ki:p -> kEpt  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: f@gEt -> f@gOt  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: sni:k -> sni:kt  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: aUtSaIn -> aUtSOn  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: spi:k -> sp@Uk  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: @Uv@h&N -> @Uv@hVN  probs: [1.000, 0.000, 0.000, 0.000]
+
+INCORRECT IRREGULAR PREDICTIONS (10 total)
+----------------------------------------
+  Expert 0: Int@wi:v -> Int@wi:vd  (expected: Int@w@Uv)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: VnbaInd -> VnbaIndId  (expected: VnbaUnd)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: di:l -> di:ld  (expected: dElt)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: dIg -> dIgd  (expected: dVg)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: sEl -> sEld  (expected: s@Uld)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: fO:l -> fO:ld  (expected: fEl)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: laI -> laId  (expected: leI)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: breIk -> breIkt  (expected: br@Uk)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: sINk -> s&Nkt  (expected: s&Nk)  probs: [1.000, 0.000, 0.000, 0.000]
+  Expert 0: fi:l -> fi:ld  (expected: fElt)  probs: [1.000, 0.000, 0.000, 0.000]
+
+WUG VERB EXPERT ROUTING
+----------------------------------------
+  Expert 0: 90 wugs (38 match regular, 12 match irregular)
+  Expert 1: 0 wugs (0 match regular, 0 match irregular)
+  Expert 2: 0 wugs (0 match regular, 0 match irregular)
+  Expert 3: 0 wugs (0 match regular, 0 match irregular)
+
+  Total wugs: 90, regular matches: 38, irregular matches: 12

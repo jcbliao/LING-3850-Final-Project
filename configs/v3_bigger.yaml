@@ -1,0 +1,36 @@
+# v3: Larger model — d_model=128, no recon, relaxed L0
+# Goal: test whether d_model=64 is underpowered
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model — wider but same depth
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+dropout: 0.3
+
+# L0Drop — relaxed target
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+# NO reconstruction
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v3_bigger"
+results_dir: "../results/v3_bigger"
+plot_every: 5

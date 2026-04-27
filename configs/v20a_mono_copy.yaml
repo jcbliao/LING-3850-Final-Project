@@ -1,0 +1,40 @@
+# v20a: Monotonic copy-biased LSTM decoder
+# At each step: blend p_copy * src[ptr] + (1-p_copy) * vocab_dist
+# Hard monotonic pointer advances when output matches source.
+# Bias toward copying (p_copy init ≈ 0.88).
+# Regular rule = copy everything + generate suffix. Trivially learnable.
+# Irregular = copy + substitute at specific positions.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: mono_copy
+use_slots: false
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Decoder
+dec_layers: 1
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v20a_mono_copy"
+results_dir: "../results/v20a_mono_copy"
+plot_every: 5

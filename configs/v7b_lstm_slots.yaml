@@ -1,0 +1,36 @@
+# v7b: LSTM decoder with Bahdanau attention + slot attention
+# Tests whether slot attention helps when decoder has natural sequential processing
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+decoder_type: lstm
+use_slots: true
+use_copy: false
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 1
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+dropout: 0.3
+
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+alpha_recon: 0.0
+
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+save_dir: "../checkpoints/v7b_lstm_slots"
+results_dir: "../results/v7b_lstm_slots"
+plot_every: 5

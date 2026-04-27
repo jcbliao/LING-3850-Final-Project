@@ -1,0 +1,35 @@
+# Revised config v1 — fixes overfitting + L0 issues from initial run
+# Changes from default: smaller model, stronger L0, warmup, early stopping, reconstruction
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model — reduced capacity (1.2M → ~250K params)
+d_model: 64
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 128
+num_slots: 4
+slot_iters: 3
+dropout: 0.3
+
+# L0Drop — much stronger sparsity + warmup
+lambda_l0: 1.0
+l0_beta: 0.66
+l0_warmup_epochs: 20
+
+# Multi-task reconstruction
+alpha_recon: 0.5
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 20
+
+# Output
+save_dir: "../checkpoints"
+results_dir: "../results"
+plot_every: 5

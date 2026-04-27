@@ -1,0 +1,39 @@
+# v19c: Per-position edit labeler (non-autoregressive)
+# Classifies each source position as COPY/DELETE/SUB(c) in parallel.
+# Small LSTM suffix head predicts 0-3 appended characters.
+# No pointer drift — avoids v19a's exposure bias problem entirely.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: edit_labeler
+use_slots: false
+use_copy: false
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Edit labeler (no decoder-specific params needed beyond encoder)
+dec_layers: 1
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v19c_edit_labeler"
+results_dir: "../results/v19c_edit_labeler"
+plot_every: 5

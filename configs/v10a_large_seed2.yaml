@@ -1,0 +1,26 @@
+# v10a-large seed 2 — param-matched to v17a (715K vs 721K)
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 2
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: false
+use_copy: false
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 3
+d_ff: 256
+dropout: 0.3
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+save_dir: "../checkpoints/v10a_large_seed2"
+results_dir: "../results/v10a_large_seed2"
+plot_every: 5

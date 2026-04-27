@@ -1,0 +1,36 @@
+# v3: Relaxed L0 — same as v2 but target_l0=3.0 (75% of slots active)
+# Goal: test whether 2 active slots is too tight a bottleneck
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model — same as v2
+d_model: 64
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 128
+num_slots: 4
+slot_iters: 3
+dropout: 0.3
+
+# L0Drop — relaxed target
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+# NO reconstruction (keep it simple)
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v3_relaxed_l0"
+results_dir: "../results/v3_relaxed_l0"
+plot_every: 5

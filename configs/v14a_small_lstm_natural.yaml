@@ -1,0 +1,44 @@
+# v14a: Small LSTM hidden + developmental annealing — natural data
+# LSTM hidden=32 constrains decoder's independent capacity while attention
+# over slots operates at full d_model=128. Output: [lstm(32); context(128)] → vocab.
+# The decoder can attend to slot content at full resolution but has minimal
+# independent state to bypass it.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: true
+use_copy: false
+lstm_hidden: 32
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+dropout: 0.3
+
+l0_mode: conditional
+target_l0: 2.0
+l0_anneal_start: 50
+l0_anneal_epochs: 50
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+alpha_recon: 0.0
+training_regime: natural
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 50
+
+save_dir: "../checkpoints/v14a_small_lstm_natural"
+results_dir: "../results/v14a_small_lstm_natural"
+plot_every: 5

@@ -1,0 +1,45 @@
+# v17a: Population-coded decoder — self-gating neurons with lateral inhibition
+# Each neuron computes both output AND confidence (no external router).
+# Analogous to population coding: multiple neurons with different tuning
+# curves all fire for the same stimulus, weighted by self-determined confidence.
+# Clamped diversity loss provides lateral inhibition.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: population
+use_slots: false
+use_copy: false
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Population decoder
+num_experts: 4
+expert_hidden: 64
+lambda_diversity: 0.1
+lambda_balance: 0.0
+dec_layers: 1
+dec_bottleneck: 0
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v17a_population"
+results_dir: "../results/v17a_population"
+plot_every: 5

@@ -1,0 +1,42 @@
+# v13a: Decoder bottleneck + developmental annealing — natural data
+# Combines two strategies: small decoder output head (32-dim) forces reliance
+# on slot content, plus Phase 1→2 L0 annealing for developmental learning
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: true
+use_copy: false
+dec_bottleneck: 32
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+dropout: 0.3
+
+l0_mode: conditional
+target_l0: 2.0
+l0_anneal_start: 50
+l0_anneal_epochs: 50
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+alpha_recon: 0.0
+training_regime: natural
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 50
+
+save_dir: "../checkpoints/v13a_bottleneck_natural"
+results_dir: "../results/v13a_bottleneck_natural"
+plot_every: 5

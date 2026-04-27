@@ -1,0 +1,70 @@
+======================================================================
+POPULATION DECODER NEURON ANALYSIS — v17a
+======================================================================
+
+Test set: 405 total (386 regular, 19 irregular)
+Overall accuracy: 380/405 = 93.8%
+Regular accuracy: 372/386 = 96.4%
+Irregular accuracy: 8/19 = 42.1%
+Balanced accuracy: 69.2%
+
+--------------------------------------------------
+Mean neuron confidence weights: CORRECT predictions
+--------------------------------------------------
+  Neuron 0: 0.4621 (std 0.1169)
+  Neuron 1: 0.0000 (std 0.0000)
+  Neuron 2: 0.5376 (std 0.1172)
+  Neuron 3: 0.0003 (std 0.0026)
+
+--------------------------------------------------
+Mean neuron confidence weights: INCORRECT predictions
+--------------------------------------------------
+  Neuron 0: 0.6438 (std 0.1570)
+  Neuron 1: 0.0000 (std 0.0000)
+  Neuron 2: 0.3561 (std 0.1570)
+  Neuron 3: 0.0001 (std 0.0002)
+
+--------------------------------------------------
+Mean neuron confidence weights: REGULAR verbs
+--------------------------------------------------
+  Neuron 0: 0.4645
+  Neuron 1: 0.0000
+  Neuron 2: 0.5353
+  Neuron 3: 0.0003
+
+--------------------------------------------------
+Mean neuron confidence weights: IRREGULAR verbs
+--------------------------------------------------
+  Neuron 0: 0.6527
+  Neuron 1: 0.0000
+  Neuron 2: 0.3473
+  Neuron 3: 0.0001
+
+==================================================
+Per-neuron top-confidence verb breakdown
+==================================================
+
+Neuron 0: 124 verbs where it has highest confidence
+  Regular:   108/124 = 87.1%
+  Irregular: 16/124 = 12.9%
+  Correct:   104/124 = 83.9%
+
+Neuron 1: 0 verbs (never top)
+
+Neuron 2: 281 verbs where it has highest confidence
+  Regular:   278/281 = 98.9%
+  Irregular: 3/281 = 1.1%
+  Correct:   276/281 = 98.2%
+
+Neuron 3: 0 verbs (never top)
+
+==================================================
+Confidence distribution entropy (per example)
+==================================================
+Mean entropy: 0.6590 (max possible: 1.3863)
+Std entropy:  0.0530
+Min entropy:  0.2842
+Max entropy:  0.7927
+
+Regular mean entropy:   0.6622
+Irregular mean entropy: 0.5938

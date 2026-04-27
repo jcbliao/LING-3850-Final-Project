@@ -1,0 +1,37 @@
+# v11b: BiLSTM + LSTM + tight bottleneck (2 slots, target_l0=1.5)
+# Hypothesis: fewer slots forces specialization (e.g. regular vs irregular)
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: true
+use_copy: false
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 2
+slot_iters: 3
+slot_nhead: 2
+dropout: 0.3
+
+l0_mode: conditional
+target_l0: 1.5
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+alpha_recon: 0.0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 30
+
+save_dir: "../checkpoints/v11b_tight_bottleneck"
+results_dir: "../results/v11b_tight_bottleneck"
+plot_every: 5

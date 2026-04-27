@@ -1,0 +1,44 @@
+# v18a: Population decoder with small neurons (32)
+# v16e showed expert_hidden=32 beats 64 — forces abstraction over memorization.
+# Tests if this transfers to population coding.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: population
+use_slots: false
+use_copy: false
+confidence_mode: input
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Population decoder
+num_experts: 4
+expert_hidden: 32
+lambda_diversity: 0.1
+lambda_balance: 0.0
+dec_layers: 1
+dec_bottleneck: 0
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v18a_population_small"
+results_dir: "../results/v18a_population_small"
+plot_every: 5

@@ -1,0 +1,45 @@
+# v4: Copy mechanism + multi-head slot attention
+# Key ideas:
+# - Copy mechanism: decoder can copy chars from source (~90% of output is copied)
+# - Multi-head slot attention: slots compete per feature subspace, not just position
+# - No reconstruction needed (copy mechanism provides a stronger inductive bias)
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+dropout: 0.3
+
+# Multi-head slot attention (4 heads = 4 feature subspaces)
+slot_nhead: 4
+
+# Copy mechanism
+use_copy: true
+
+# L0Drop — relaxed target
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+# No reconstruction (copy mechanism is a better inductive bias)
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v4_copy_multihead"
+results_dir: "../results/v4_copy_multihead"
+plot_every: 5

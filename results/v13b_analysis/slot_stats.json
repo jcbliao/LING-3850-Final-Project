@@ -1,0 +1,32 @@
+{
+  "reg_mean_gates": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "irreg_mean_gates": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "gate_diff_per_slot": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "irreg_correct_mean_gates": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "irreg_wrong_mean_gates": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ]
+}

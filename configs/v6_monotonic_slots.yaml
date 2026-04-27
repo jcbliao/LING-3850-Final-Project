@@ -1,0 +1,41 @@
+# v6b: Monotonic copy attention + slot attention
+# Same as v6 but WITH slots — tests whether slots help once alignment is fixed
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+use_slots: true
+
+# Model
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+dropout: 0.3
+
+# L0Drop
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+# Copy mechanism
+use_copy: true
+
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v6_monotonic_slots"
+results_dir: "../results/v6_monotonic_slots"
+plot_every: 5

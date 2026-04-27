@@ -1,0 +1,30 @@
+IRREGULAR VERB PREDICTIONS BY EXPERT
+============================================================
+
+--- Expert 0 (19 irregular verbs) ---
+  [CORRECT] @Uv@h&N -> @Uv@hVN  (pred: @Uv@hVN)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] @Uv@kVm -> @Uv@keIm  (pred: @Uv@keIm)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] Int@wi:v -> Int@w@Uv  (pred: Int@wi:vd)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] VnbaInd -> VnbaUnd  (pred: VnbaIndId)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] aUtSaIn -> aUtSOn  (pred: aUtSOn)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] breIk -> br@Uk  (pred: breIkt)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] dIg -> dVg  (pred: dIgd)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] di:l -> dElt  (pred: di:ld)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] f@gEt -> f@gOt  (pred: f@gOt)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] fO:l -> fEl  (pred: fO:ld)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] fi:l -> fElt  (pred: fi:ld)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] ki:p -> kEpt  (pred: kEpt)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] laI -> leI  (pred: laId)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] ri:raIt -> ri:r@Ut  (pred: ri:r@Ut)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] sEl -> s@Uld  (pred: sEld)  probs: [1.000, 0.000, 0.000, 0.000]
+  [WRONG] sINk -> s&Nk  (pred: s&Nkt)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] sni:k -> sni:kt  (pred: sni:kt)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] spIt -> sp&t  (pred: sp&t)  probs: [1.000, 0.000, 0.000, 0.000]
+  [CORRECT] spi:k -> sp@Uk  (pred: sp@Uk)  probs: [1.000, 0.000, 0.000, 0.000]
+
+--- Expert 1 (0 irregular verbs) ---
+
+--- Expert 2 (0 irregular verbs) ---
+
+--- Expert 3 (0 irregular verbs) ---
+

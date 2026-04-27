@@ -1,0 +1,40 @@
+# v19a: Edit transducer — predicts edit operations instead of characters
+# Inductive bias: morphology = mostly COPY with local edits.
+# Regular rule: COPY COPY ... INSERT(d) — trivially learnable.
+# Irregular:    COPY COPY SUB(vowel) COPY — explicit vowel change.
+# No curriculum, no phases — the edit vocabulary IS the inductive bias.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: edit
+use_slots: false
+use_copy: false
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Edit decoder
+dec_layers: 1
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v19a_edit_transducer"
+results_dir: "../results/v19a_edit_transducer"
+plot_every: 5

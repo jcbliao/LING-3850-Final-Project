@@ -1,0 +1,36 @@
+# v3: Ablate reconstruction — same as v2 but alpha_recon=0.0
+# Goal: test whether reconstruction is bottlenecking transduction learning
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model — same as v2
+d_model: 64
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 128
+num_slots: 4
+slot_iters: 3
+dropout: 0.3
+
+# L0Drop — same as v2
+l0_mode: conditional
+target_l0: 2.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+# NO reconstruction (key difference from v2)
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v3_no_recon"
+results_dir: "../results/v3_no_recon"
+plot_every: 5

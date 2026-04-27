@@ -1,0 +1,39 @@
+# v15b: Gumbel-softmax slot routing + decoder bottleneck + oversample
+# Learns categorical distribution over which 2 of 4 slots to activate.
+# Temperature anneals from 1.0 → 0.1 during training for progressively
+# harder selection.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: true
+use_copy: false
+dec_bottleneck: 32
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+dropout: 0.3
+
+l0_mode: gumbel
+target_l0: 2.0
+
+alpha_recon: 0.0
+training_regime: oversample
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 30
+
+save_dir: "../checkpoints/v15b_gumbel"
+results_dir: "../results/v15b_gumbel"
+plot_every: 5

@@ -1,0 +1,26 @@
+# v6 balanced: Monotonic copy, no slots, balanced training regime
+# Subsamples regulars to match irregular count — tests irregular learning
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: balanced
+
+use_slots: false
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+use_copy: true
+alpha_recon: 0.0
+
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+save_dir: "../checkpoints/v6_balanced"
+results_dir: "../results/v6_balanced"
+plot_every: 5

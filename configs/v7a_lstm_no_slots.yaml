@@ -1,0 +1,28 @@
+# v7a: LSTM decoder with Bahdanau attention, no slot attention
+# Replicates Kirov & Cotterell (2018) core architecture
+# No copy mechanism needed — LSTM generates every char, naturally monotonic
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+decoder_type: lstm
+use_slots: false
+use_copy: false
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 1
+d_ff: 256
+dropout: 0.3
+alpha_recon: 0.0
+
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+save_dir: "../checkpoints/v7a_lstm_no_slots"
+results_dir: "../results/v7a_lstm_no_slots"
+plot_every: 5

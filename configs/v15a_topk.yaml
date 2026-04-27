@@ -1,0 +1,38 @@
+# v15a: Hard top-k slot selection + decoder bottleneck + oversample
+# Guarantees exactly k=2 active slots per input via straight-through top-k.
+# Forces real slot specialization — no ambiguous soft gates.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: true
+use_copy: false
+dec_bottleneck: 32
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+dropout: 0.3
+
+l0_mode: topk
+target_l0: 2.0
+
+alpha_recon: 0.0
+training_regime: oversample
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 30
+
+save_dir: "../checkpoints/v15a_topk"
+results_dir: "../results/v15a_topk"
+plot_every: 5

@@ -1,0 +1,45 @@
+# v5: No-slot baseline — standard encoder-decoder with copy mechanism
+# Matches v4 architecture (encoder, decoder, copy) but WITHOUT slot attention or L0Drop.
+# Decoder cross-attends directly to encoder output H (B, N, d_model).
+# Purpose: determine whether slot attention helps or hurts transduction accuracy.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# No slot attention
+use_slots: false
+
+# Model (matches v4)
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Slot params (ignored when use_slots=false, kept for reference)
+num_slots: 4
+slot_iters: 3
+slot_nhead: 4
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+# Copy mechanism
+use_copy: true
+
+# No reconstruction
+alpha_recon: 0.0
+
+# Training (matches v4)
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v5_baseline_no_slots"
+results_dir: "../results/v5_baseline_no_slots"
+plot_every: 5

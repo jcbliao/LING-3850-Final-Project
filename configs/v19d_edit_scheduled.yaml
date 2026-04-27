@@ -1,0 +1,41 @@
+# v19d: Edit transducer with scheduled sampling
+# Fixes v19a's pointer drift by gradually replacing teacher-forced edits
+# with the model's own predictions during training.
+# Scheduled sampling probability anneals 0 → 0.5 over 100 epochs.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: edit
+use_slots: false
+use_copy: false
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Edit decoder with scheduled sampling
+dec_layers: 1
+scheduled_sampling: 0.5
+ss_anneal_epochs: 100
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v19d_edit_scheduled"
+results_dir: "../results/v19d_edit_scheduled"
+plot_every: 5

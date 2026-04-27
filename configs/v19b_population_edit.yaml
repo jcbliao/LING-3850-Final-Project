@@ -1,0 +1,44 @@
+# v19b: Population-coded edit transducer
+# Combines v17a (self-gating population neurons) with v19a (edit operations).
+# 4 neurons, each an EditDecoder predicting COPY/DELETE/INSERT/SUB ops.
+# Each neuron self-gates with input-based confidence.
+# Clamped diversity loss for lateral inhibition.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: population_edit
+use_slots: false
+use_copy: false
+confidence_mode: input
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# Population edit decoder
+num_experts: 4
+expert_hidden: 64
+lambda_diversity: 0.1
+dec_layers: 1
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v19b_population_edit"
+results_dir: "../results/v19b_population_edit"
+plot_every: 5

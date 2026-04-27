@@ -1,0 +1,69 @@
+============================================================
+ERROR ANALYSIS
+============================================================
+
+--- IRREGULAR VERBS (3/19 correct) ---
+
+  [CORRECT] ri:raIt      → ri:r@Ut      (pred: ri:r@Ut)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [CORRECT] f@gEt        → f@gOt        (pred: f@gOt)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [CORRECT] sni:k        → sni:kt       (pred: sni:kt)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] spIt         → sp&t         (pred: spItId)
+           gates: [0.000, 1.000, 1.000, 0.000]
+  [WRONG  ] Int@wi:v     → Int@w@Uv     (pred: Int@vi:nd)
+           gates: [0.000, 1.000, 1.000, 0.000]
+  [WRONG  ] VnbaInd      → VnbaUnd      (pred: VnbaUndId)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] di:l         → dElt         (pred: di:ldId)
+           gates: [0.000, 1.000, 0.000, 1.000]
+  [WRONG  ] dIg          → dVg          (pred: dIgd)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] @Uv@kVm      → @Uv@keIm     (pred: @Uv@kVmd)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] ki:p         → kEpt         (pred: ki:pt)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] sEl          → s@Uld        (pred: sEld)
+           gates: [0.000, 1.000, 1.000, 0.000]
+  [WRONG  ] fO:l         → fEl          (pred: fO:fEd)
+           gates: [0.000, 1.000, 1.000, 0.000]
+  [WRONG  ] aUtSaIn      → aUtSOn       (pred: aUtSaInd)
+           gates: [0.000, 1.000, 1.000, 0.000]
+  [WRONG  ] spi:k        → sp@Uk        (pred: spi:kt)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] laI          → leI          (pred: laId)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] breIk        → br@Uk        (pred: breIkt)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] sINk         → s&Nk         (pred: sINkt)
+           gates: [1.000, 1.000, 0.000, 0.000]
+  [WRONG  ] fi:l         → fElt         (pred: fi:ld)
+           gates: [0.000, 1.000, 1.000, 0.000]
+  [WRONG  ] @Uv@h&N      → @Uv@hVN      (pred: @Uv@T&Nd)
+           gates: [0.000, 1.000, 1.000, 0.000]
+
+--- REGULAR VERBS (248/386 correct) ---
+    138 errors:
+
+  [WRONG  ] bIl          → bIld         (pred: bIbl,d)
+  [WRONG  ] krItIsaIz    → krItIsaIzd   (pred: krItIsIlaIzd)
+  [WRONG  ] mA:kIt       → mA:kItId     (pred: mA:k&ktId)
+  [WRONG  ] b@si:dZ      → b@si:dZd     (pred: b@si:vd)
+  [WRONG  ] EnTju:z      → EnTju:zd     (pred: Enju:zd)
+  [WRONG  ] OblIt@reIt   → OblIt@reItId (pred: Obz@leItId)
+  [WRONG  ] kOnsEntreIt  → kOnsEntreItId (pred: kOnsEntrUeItId)
+  [WRONG  ] Int@leIs     → Int@leIst    (pred: Int@sleItId)
+  [WRONG  ] hOIst        → hOIstId      (pred: hOsItId)
+  [WRONG  ] nVrIS        → nVrISt       (pred: VnrISt)
+  [WRONG  ] k@U&gj@leIt  → k@U&gj@leItId (pred: k@UOlju:tIleItId)
+  [WRONG  ] prUvaId      → prUvaIdId    (pred: prUvaUdId)
+  [WRONG  ] Il@streIt    → Il@streItId  (pred: @lIstreItId)
+  [WRONG  ] klINk        → klINkt       (pred: kl&Nkt)
+  [WRONG  ] fIltS        → fIltSt       (pred: fIftl,aIzd)
+  [WRONG  ] dEm@nstreIt  → dEm@nstreItId (pred: dEm@nseItId)
+  [WRONG  ] laIsn,s      → laIsn,st     (pred: laIsn,d)
+  [WRONG  ] sEntImEnt@laIz → sEntImEnt@laIzd (pred: EnstISj@naIzd)
+  [WRONG  ] ImprEgneIt   → ImprEgneItId (pred: ImprUgeItId)
+  [WRONG  ] p&lpIteIt    → p&lpIteItId  (pred: p&ltIpeItId)
+  ... and 118 more

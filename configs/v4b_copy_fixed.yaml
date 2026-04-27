@@ -1,0 +1,42 @@
+# v4b: Fixed copy mechanism — same as v4 but with:
+#   - Separate Q/K projections for copy attention (bridges decoder-encoder space gap)
+#   - p_gen bias initialized to -2.0 (biases toward copying from the start)
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+num_slots: 4
+slot_iters: 3
+dropout: 0.3
+
+# Multi-head slot attention
+slot_nhead: 4
+
+# Copy mechanism (with fixes)
+use_copy: true
+
+# L0Drop
+l0_mode: conditional
+target_l0: 3.0
+lagrangian_lr: 0.01
+l0_beta: 0.66
+
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 25
+
+# Output
+save_dir: "../checkpoints/v4b_copy_fixed"
+results_dir: "../results/v4b_copy_fixed"
+plot_every: 5

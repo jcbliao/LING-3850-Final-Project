@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.ipynb_checkpoints/
+
+# Virtual envs
+venv/
+env/
+.venv/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Project artifacts (large or transient)
+checkpoints/
+logs/
+slurm-*.out
+slurm-*.err
+
+# Stale empty dirs created by sbatch from scripts/ cwd
+scripts/checkpoints/
+scripts/logs/
+scripts/results/
+
+# Generated HTML (rendered from progress.md)
+progress.html
+
+# Local Claude config
+.claude/

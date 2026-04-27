@@ -1,0 +1,53 @@
+# v16c: MoE with guided routing — Gumbel + low balance + small experts + cls aux
+# Key changes from v16b:
+#   - expert_hidden: 64 → 32 (force abstraction over memorization)
+#   - lambda_balance: 0.1 → 0.001 (allow natural imbalance: 95% reg, 5% irreg)
+#   - alpha_cls_router: 1.0 (aux reg/irreg classifier on router representation)
+#   - cls_anneal_epochs: 50 (anneal aux supervision to 0 over 50 epochs)
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+encoder_type: bilstm
+decoder_type: moe_lstm
+use_slots: false
+use_copy: false
+
+# Encoder
+d_model: 128
+nhead: 4
+enc_layers: 2
+d_ff: 256
+dropout: 0.3
+
+# MoE decoder
+num_experts: 4
+expert_hidden: 32
+routing_mode: gumbel
+gumbel_tau: 1.0
+gumbel_tau_end: 0.1
+gumbel_anneal_epochs: 100
+lambda_balance: 0.001
+dec_layers: 1
+dec_bottleneck: 0
+
+# Auxiliary router supervision: guide routing with reg/irreg labels, then anneal away
+alpha_cls_router: 1.0
+cls_anneal_epochs: 50
+
+# Unused but required for model ctor
+num_slots: 4
+slot_iters: 3
+slot_nhead: 1
+
+# Training
+training_regime: oversample
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 25
+
+save_dir: "../checkpoints/v16c_moe_guided"
+results_dir: "../results/v16c_moe_guided"
+plot_every: 5

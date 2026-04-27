@@ -1,0 +1,32 @@
+# Default training configuration
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+
+# Model
+d_model: 128
+nhead: 4
+enc_layers: 3
+dec_layers: 3
+d_ff: 256
+num_slots: 8
+slot_iters: 3
+dropout: 0.1
+
+# L0Drop
+lambda_l0: 0.01
+l0_beta: 0.66
+
+# Multi-task (set alpha_recon > 0 to enable reconstruction decoder)
+alpha_recon: 0.0
+
+# Training
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 100
+
+# Output
+save_dir: "../checkpoints"
+results_dir: "../results"
+plot_every: 5

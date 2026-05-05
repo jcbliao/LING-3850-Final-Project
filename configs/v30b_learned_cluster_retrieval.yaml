@@ -1,0 +1,45 @@
+# v30b: biLSTM + LSTM + unsupervised cluster retrieval + LEARNED predictor.
+#
+# Same as v30a but adds a small cluster-predictor head on top of the encoder
+# (mean-pool → MLP → softmax over the auto-discovered clusters). Trained
+# jointly via auxiliary CE loss with weight `lambda_cluster`. At val/test,
+# the cluster is predicted from src alone — closing the small information
+# leak that v27/v30a had via target-derived true cluster.
+#
+# This is the fully language-agnostic, no-leak version. Should also fix
+# the wug regression because wugs now get predicted-cluster retrieval
+# instead of falling back to plain edit-distance retrieval.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: false
+use_copy: false
+
+use_retrieval: true
+retrieval_k: 5
+retrieval_mode: cluster
+use_cluster_predictor: true
+lambda_cluster: 0.5
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v30b_learned_cluster_retrieval"
+results_dir: "../results/v30b_learned_cluster_retrieval"
+plot_every: 5
+track_val_split: true

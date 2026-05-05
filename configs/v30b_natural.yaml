@@ -1,0 +1,38 @@
+# v30b with natural training regime (no irregular oversampling).
+# Together with v10a (natural, no retrieval), v10a_oversample (oversample,
+# no retrieval), and v30b (oversample, retrieval), this completes the 2x2
+# ablation: natural/oversample × no-retrieval/with-retrieval.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: natural
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: false
+use_copy: false
+
+use_retrieval: true
+retrieval_k: 5
+retrieval_mode: cluster
+use_cluster_predictor: true
+lambda_cluster: 0.5
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v30b_natural"
+results_dir: "../results/v30b_natural"
+plot_every: 5
+track_val_split: true

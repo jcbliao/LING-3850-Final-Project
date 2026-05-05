@@ -17,6 +17,8 @@ from .population_decoder import PopulationDecoder, PopulationEditDecoder
 from .edit_decoder import EditDecoder, EDIT_PAD
 from .edit_labeler import EditLabeler
 from .copy_decoder import MonotonicCopyDecoder
+from .transducer_decoder import TransducerDecoder
+from .transducer_actions import ACTION_PAD
 
 
 class SlotAttentionTransducer(nn.Module):
@@ -49,7 +51,11 @@ class SlotAttentionTransducer(nn.Module):
                  lambda_diversity: float = 0.0,
                  confidence_mode: str = "input",
                  neuron_dropout: float = 0.0,
-                 confidence_tau: float = 1.0):
+                 confidence_tau: float = 1.0,
+                 mono_alpha_init: float = 1.0,
+                 use_retrieval: bool = False,
+                 num_clusters: int = 0,
+                 lambda_cluster: float = 0.0):
         super().__init__()
         self.pad_idx = pad_idx
         self.lambda_l0 = lambda_l0
@@ -58,6 +64,9 @@ class SlotAttentionTransducer(nn.Module):
         self.l0_mode = l0_mode
         self.use_copy = use_copy
         self.use_slots = use_slots
+        self.use_retrieval = use_retrieval
+        self.num_clusters = num_clusters
+        self.lambda_cluster = lambda_cluster
 
         if encoder_type == "bilstm":
             self.encoder = BiLSTMEncoder(
@@ -98,7 +107,14 @@ class SlotAttentionTransducer(nn.Module):
             self.slot_attention = None
             self.l0drop = None
 
-        if decoder_type == "mono_copy":
+        if decoder_type == "transducer":
+            self.decoder = TransducerDecoder(
+                char_vocab_size=vocab_size, d_model=d_model,
+                num_layers=dec_layers, d_ff=d_ff, dropout=dropout,
+                pad_idx=pad_idx, lstm_hidden=lstm_hidden,
+                use_retrieval=use_retrieval,
+            )
+        elif decoder_type == "mono_copy":
             self.decoder = MonotonicCopyDecoder(
                 vocab_size=vocab_size, d_model=d_model,
                 num_layers=dec_layers, d_ff=d_ff, dropout=dropout,
@@ -152,6 +168,7 @@ class SlotAttentionTransducer(nn.Module):
                 routing_mode=routing_mode, gumbel_tau=gumbel_tau,
                 lambda_balance=lambda_balance,
                 alpha_cls_router=alpha_cls_router,
+                use_retrieval=use_retrieval,
             )
             self.lambda_diversity = lambda_diversity
         elif decoder_type == "lstm":
@@ -160,12 +177,14 @@ class SlotAttentionTransducer(nn.Module):
                 num_layers=dec_layers, d_ff=d_ff, dropout=dropout, pad_idx=pad_idx,
                 use_copy=use_copy, dec_bottleneck=dec_bottleneck,
                 lstm_hidden=lstm_hidden,
+                use_retrieval=use_retrieval,
             )
         else:
             self.decoder = TransformerCharDecoder(
                 vocab_size=vocab_size, d_model=d_model, nhead=nhead,
                 num_layers=dec_layers, d_ff=d_ff, dropout=dropout, pad_idx=pad_idx,
-                use_copy=use_copy,
+                use_copy=use_copy, mono_alpha_init=mono_alpha_init,
+                use_retrieval=use_retrieval,
             )
 
         # Optional reconstruction decoder (multi-task variant)
@@ -174,6 +193,20 @@ class SlotAttentionTransducer(nn.Module):
             self.recon_decoder = TransformerCharDecoder(
                 vocab_size=vocab_size, d_model=d_model, nhead=nhead,
                 num_layers=dec_layers, d_ff=d_ff, dropout=dropout, pad_idx=pad_idx,
+            )
+
+        # Optional learned cluster predictor (for retrieval-without-leak).
+        # Trained jointly via auxiliary CE loss on the true alignment-cluster
+        # ID (derived from train (src, tgt) pairs). At eval, cluster is
+        # predicted from src alone — closing the val/test info leak that
+        # `use_class_retrieval` / `retrieval_mode=cluster` otherwise has.
+        self.cluster_predictor = None
+        if num_clusters > 0:
+            self.cluster_predictor = nn.Sequential(
+                nn.Linear(d_model, d_model // 2),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(d_model // 2, num_clusters),
             )
 
         # Optional verb-class classifier on slot representations
@@ -192,7 +225,14 @@ class SlotAttentionTransducer(nn.Module):
                 reg_labels: torch.Tensor | None = None,
                 edit_targets: torch.Tensor | None = None,
                 edit_labels: torch.Tensor | None = None,
-                suffix_targets: torch.Tensor | None = None):
+                suffix_targets: torch.Tensor | None = None,
+                action_targets: torch.Tensor | None = None,
+                dagger_beta: float = 0.0,
+                src_no_eos: list | None = None,
+                tgt_no_special: list | None = None,
+                retrieval_ids: torch.Tensor | None = None,
+                retrieval_pad_mask: torch.Tensor | None = None,
+                cluster_targets: torch.Tensor | None = None):
         """
         Args:
             src: (batch, n) source character indices
@@ -214,7 +254,30 @@ class SlotAttentionTransducer(nn.Module):
             memory = H                           # (B, n, d)
 
         # Decode: teacher-forced
-        if isinstance(self.decoder, EditLabeler) and edit_labels is not None:
+        if isinstance(self.decoder, TransducerDecoder) and action_targets is not None:
+            # HMNT: explicit pointer over encoder output (no slot path).
+            retr_mem, retr_mask = self._encode_retrieval(retrieval_ids, retrieval_pad_mask)
+            out = self.decoder(
+                action_targets, memory, src_tokens=src,
+                use_dagger=dagger_beta > 0,
+                beta=dagger_beta,
+                src_no_eos=src_no_eos,
+                tgt_no_special=tgt_no_special,
+                retrieval_memory=retr_mem,
+                retrieval_pad_mask=retr_mask,
+            )
+            logits = out["logits"]                                   # (B, T-1, A)
+            targets = out["targets"]                                 # (B, T-1)
+            mask = out["mask"].float()                               # (B, T-1)
+            ce = F.cross_entropy(
+                logits.reshape(-1, logits.size(-1)),
+                targets.reshape(-1),
+                ignore_index=ACTION_PAD,
+                reduction="none",
+            ).reshape_as(targets)
+            denom = mask.sum().clamp(min=1.0)
+            loss_transduce = (ce * mask).sum() / denom
+        elif isinstance(self.decoder, EditLabeler) and edit_labels is not None:
             # Per-position edit labeler
             labeler_result = self.decoder(memory, src, edit_labels=edit_labels,
                                           suffix_targets=suffix_targets)
@@ -234,9 +297,16 @@ class SlotAttentionTransducer(nn.Module):
             # Standard character-level decoding
             dec_input = tgt[:, :-1]
             dec_target = tgt[:, 1:]
+            extra_kwargs = {}
+            if self.use_retrieval:
+                # Only TransformerCharDecoder accepts retrieval kwargs in this branch.
+                retr_mem, retr_mask = self._encode_retrieval(retrieval_ids, retrieval_pad_mask)
+                extra_kwargs["retrieval_memory"] = retr_mem
+                extra_kwargs["retrieval_pad_mask"] = retr_mask
             logits = self.decoder(dec_input, memory,
                                   encoder_out=H if self.use_copy else None,
-                                  src_tokens=src)
+                                  src_tokens=src,
+                                  **extra_kwargs)
             if self.use_copy:
                 loss_transduce = F.nll_loss(
                     logits.reshape(-1, logits.size(-1)),
@@ -305,6 +375,18 @@ class SlotAttentionTransducer(nn.Module):
             result["loss"] = result["loss"] + self.alpha_recon * loss_recon
             result["loss_recon"] = loss_recon
 
+        # Optional cluster-prediction auxiliary loss (for v30b learned-predictor mode).
+        if self.cluster_predictor is not None and cluster_targets is not None:
+            src_pad_mask = (src == self.pad_idx)
+            real_mask = ~src_pad_mask
+            lengths = real_mask.sum(dim=1, keepdim=True).clamp(min=1).float()
+            pooled = (H * real_mask.unsqueeze(-1).float()).sum(dim=1) / lengths
+            cluster_logits = self.cluster_predictor(pooled)
+            cluster_loss = F.cross_entropy(cluster_logits, cluster_targets,
+                                           ignore_index=-1)
+            result["loss"] = result["loss"] + self.lambda_cluster * cluster_loss
+            result["loss_cluster"] = cluster_loss
+
         # Optional verb-class auxiliary loss on slot representations
         if self.slot_classifier is not None and reg_labels is not None and self.use_slots:
             # Flatten slots: (B, K, d) → (B, K*d)
@@ -317,8 +399,44 @@ class SlotAttentionTransducer(nn.Module):
         return result
 
     @torch.no_grad()
+    def predict_clusters(self, src: torch.Tensor) -> torch.Tensor:
+        """Argmax cluster ID per sample, predicted from src only (no tgt info).
+        Used at eval to close the info leak that true-cluster retrieval has.
+        """
+        H = self.encoder(src)
+        src_pad_mask = (src == self.pad_idx)
+        real_mask = ~src_pad_mask
+        lengths = real_mask.sum(dim=1, keepdim=True).clamp(min=1).float()
+        pooled = (H * real_mask.unsqueeze(-1).float()).sum(dim=1) / lengths
+        cluster_logits = self.cluster_predictor(pooled)
+        return cluster_logits.argmax(dim=-1)
+
+    def _encode_retrieval(self, retrieval_ids, retrieval_pad_mask):
+        """Encode retrieved-target tokens to a flat memory tensor.
+
+        Args:
+            retrieval_ids: (B, k, L) long, or None
+            retrieval_pad_mask: (B, k, L) bool, True where padded, or None
+        Returns:
+            (memory, mask) where memory is (B, k*L, d) and mask is (B, k*L),
+            or (None, None) if retrieval is disabled / inputs missing.
+        """
+        if not self.use_retrieval or retrieval_ids is None:
+            return None, None
+        B, k, L = retrieval_ids.shape
+        # Flatten to (B*k, L), encode, reshape back to (B, k*L, d).
+        flat = retrieval_ids.reshape(B * k, L)
+        enc = self.encoder(flat)                  # (B*k, L, d)
+        d = enc.size(-1)
+        memory = enc.reshape(B, k * L, d)         # (B, k*L, d)
+        mask = retrieval_pad_mask.reshape(B, k * L) if retrieval_pad_mask is not None else None
+        return memory, mask
+
+    @torch.no_grad()
     def greedy_decode(self, src: torch.Tensor, max_len: int = 32,
-                      sos_idx: int = 1, eos_idx: int = 2) -> torch.Tensor:
+                      sos_idx: int = 1, eos_idx: int = 2,
+                      retrieval_ids: torch.Tensor | None = None,
+                      retrieval_pad_mask: torch.Tensor | None = None) -> torch.Tensor:
         """Greedy autoregressive decoding for inference."""
         B = src.size(0)
         H = self.encoder(src)
@@ -328,6 +446,23 @@ class SlotAttentionTransducer(nn.Module):
             memory = self.l0drop(slots)
         else:
             memory = H
+
+        if isinstance(self.decoder, TransducerDecoder):
+            retr_mem, retr_mask = self._encode_retrieval(retrieval_ids, retrieval_pad_mask)
+            output_ids = self.decoder.greedy_decode(
+                memory, src,
+                retrieval_memory=retr_mem,
+                retrieval_pad_mask=retr_mask,
+            )
+            tensors = []
+            for ids in output_ids:
+                t = [sos_idx] + ids + [eos_idx]
+                tensors.append(torch.tensor(t, dtype=torch.long, device=src.device))
+            max_out_len = max(len(t) for t in tensors)
+            padded = torch.zeros(B, max_out_len, dtype=torch.long, device=src.device)
+            for i, t in enumerate(tensors):
+                padded[i, :len(t)] = t
+            return padded
 
         if isinstance(self.decoder, MonotonicCopyDecoder):
             return self.decoder.greedy_decode_mono(
@@ -360,11 +495,17 @@ class SlotAttentionTransducer(nn.Module):
                 padded[i, :len(t)] = t
             return padded
 
+        extra_kwargs = {}
+        if self.use_retrieval:
+            retr_mem, retr_mask = self._encode_retrieval(retrieval_ids, retrieval_pad_mask)
+            extra_kwargs["retrieval_memory"] = retr_mem
+            extra_kwargs["retrieval_pad_mask"] = retr_mask
         generated = torch.full((B, 1), sos_idx, dtype=torch.long, device=src.device)
         for _ in range(max_len - 1):
             logits = self.decoder(generated, memory,
                                   encoder_out=H if self.use_copy else None,
-                                  src_tokens=src)
+                                  src_tokens=src,
+                                  **extra_kwargs)
             next_token = logits[:, -1].argmax(dim=-1, keepdim=True)
             generated = torch.cat([generated, next_token], dim=1)
             if (next_token == eos_idx).all():

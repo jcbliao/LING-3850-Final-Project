@@ -1,0 +1,53 @@
+# v25: HMNT + class-conditional retrieval + DAgger.
+#
+# Combines the two mechanisms that address orthogonal failure modes of v22:
+#   - retrieval (Pinker's exemplar route): closes the irregular coverage gap
+#   - DAgger (Makarov & Clematide 2018): closes the regular pointer-drift gap
+#
+# Predicted balance: ~70% (vs v16e MoE's 71%) but via a cleaner story:
+# dual-route theory + recovery-from-own-mistakes training, not expert collapse.
+#
+# Schedule: 15 epochs of pure TF + retrieval (lets the model converge on the
+# clean oracle distribution and learn how to use the retrieved exemplars
+# correctly), then DAgger β-mixes 0 → 0.3 over epochs 15-45. Early stopping
+# disabled until DAgger fully ramps; checkpoint chosen by val greedy-decode
+# accuracy (track_val_split: true).
+#
+# CAVEAT: train/val/test all use TRUE class for retrieval (small leak via
+# tgt for val/test). Future v25b would substitute a learned class predictor
+# for eval-time retrieval to close the loophole.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+use_retrieval: true
+retrieval_k: 5
+use_class_retrieval: true
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 40
+
+dagger_start_epoch: 15
+dagger_beta_max: 0.3
+dagger_anneal_epochs: 30
+
+save_dir: "../checkpoints/v25_dagger_class_retrieval"
+results_dir: "../results/v25_dagger_class_retrieval"
+plot_every: 5
+track_val_split: true

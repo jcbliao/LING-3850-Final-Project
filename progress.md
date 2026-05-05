@@ -1113,3 +1113,178 @@ The key scientific comparison: population coding (v17a) vs K&C baseline (v10a), 
 - **PyTorch version**: Must use `torch==2.4.0+cu121`, not latest. The HPC CUDA driver (12.8) is too old for PyTorch >=2.11.
 - **Nested tensor warning**: Harmless `UserWarning` from `nn.TransformerEncoder` when using `src_key_padding_mask`. Can be suppressed with `warnings.filterwarnings` if desired.
 - **CPU training is very slow**: ~7+ minutes per epoch on login node. Always use SLURM GPU partition for training.
+
+## 2026-04-29: v20 final-architecture sweep (write-up phase)
+
+### Goal
+
+Stability/robustness study for the writeup. Settle two questions:
+1. Does adding slot attention to the best architecture help, hurt, or match?
+2. How sensitive is the result to mono-bias init, dropout, and d_model?
+
+### Architecture (fixed)
+
+Transformer encoder + Transformer decoder + copy mechanism + monotonic Gaussian copy bias (v6 family). This is the slot-vs-no-slot baseline pair where slots and no-slots have already been observed to perform within a few points (v6 no-slots 56.1% vs v6 slots 50.4%).
+
+### Sweep grid (144 runs)
+
+| Axis | Values | Count |
+|---|---|---|
+| `use_slots` | True, False | 2 |
+| `seed` | 1, 2, 3 | 3 |
+| `mono_alpha_init` | 0.25, 0.5, 1.0, 2.0 | 4 |
+| `dropout` | 0.1, 0.2, 0.3 | 3 |
+| `d_model` | 64, 128 | 2 |
+
+Total: 2 × 3 × 4 × 3 × 2 = **144 runs**.
+
+Other hparams held at v6 defaults: `enc_layers=2, dec_layers=2, d_ff=256, num_slots=4, slot_iters=3, slot_nhead=4, l0_mode=conditional, target_l0=3.0, use_copy=true, batch_size=32, lr=3e-4, weight_decay=1e-4, epochs=200, patience=25, alpha_recon=0`.
+
+### Code changes
+
+1. `src/model/decoder.py` — `TransformerCharDecoder.__init__` now takes `mono_alpha_init: float = 1.0` and initializes `copy_align_log_alpha = log(mono_alpha_init)` (still learnable).
+2. `src/model/full_model.py` — `SlotAttentionTransducer.__init__` accepts `mono_alpha_init` and passes through to the Transformer decoder.
+3. `src/train.py` — reads `config["mono_alpha_init"]` (default 1.0) and forwards it.
+4. `scripts/sweep_v20.py` — generates 144 YAML configs in `configs/sweep_v20/` and matching SLURM scripts in `scripts/slurm_jobs_v20/`.
+
+### Submission
+
+```bash
+python scripts/sweep_v20.py
+```
+
+143 jobs queued on `gpu` partition + 1 on `gpu_devel` (per project rule: cancel one pending and resubmit to gpu_devel for parallelism). Job IDs 1778315-1778457 + 1778458 (gpu_devel). Manifest: `scripts/slurm_jobs_v20/manifest.txt`.
+
+Results land in `results/v20_<slots|noslot>_d<64|128>_dr<0p1|0p2|0p3>_a<0p25|0p5|1|2>_s<1|2|3>/`.
+
+### Analysis plan (after completion)
+
+For each `(use_slots, d_model, dropout, mono_alpha_init)` cell, compute mean ± std across the 3 seeds for: regular acc, irregular acc, balanced acc, wug regular, wug irregular. The headline plot will be `slots vs no-slots` paired bars with seed error bars across all 24 cells.
+
+## 2026-04-29: v20 sweep results — 288 runs done
+
+All 144 natural + 144 oversample jobs completed (most in 1–5 min, faster than estimated). Aggregator: `scripts/aggregate_v20.py`. Tables in `results/v20_sweep_{results,summary}.csv`.
+
+### Headline
+
+Slots hurt the v6 architecture, paired across hparams + seeds, statistically significant in both regimes:
+
+| Regime | Slots | n | Bal mean | Bal std | Reg | Irr |
+|---|---|---|---|---|---|---|
+| natural | noslot | 72 | **0.546** | 0.046 | 0.946 | 0.146 |
+| natural | slots | 72 | 0.533 | 0.047 | 0.937 | 0.129 |
+| oversample | noslot | 72 | **0.591** | 0.051 | 0.930 | 0.252 |
+| oversample | slots | 72 | 0.572 | 0.050 | 0.927 | 0.217 |
+
+Paired t-test (slots − noslot), 72 pairs/regime:
+- natural: Δ = −0.0135, t = −4.06, **p = 0.00012**
+- oversample: Δ = −0.0188, t = −3.59, **p = 0.00061**
+
+### Hparam effects (avg over all other axes)
+
+- **mono_alpha_init**: 0.5/1.0 ≈ best; 0.25 worst (−1.5 pp), 2.0 also slightly worse. Default init is fine.
+- **dropout**: monotone improvement — 0.1 → 0.2 → 0.3. Under oversample, irr_acc jumps 18.2 → 24.4 → 27.8%. Use 0.3.
+- **d_model**: 64 ≈ 128 within 1 pp. The architecture isn't capacity-limited.
+- **oversample**: +4.5 pp balanced over natural, driven by a +10 pp lift in irregular accuracy.
+
+### Best individual runs
+
+- Natural: `v20_noslot_d64_dr0p2_a1_s1` — 64.0% balanced (reg 97.9, irr 30.0, wug 55/90)
+- Oversample: `v20_oversample_noslot_d64_dr0p2_a0p25_s3` — 68.8% balanced (reg 93.8, irr 43.8, wug 49/90)
+
+### Implications for write-up
+
+1. **Slot attention does not help past-tense morphology in this architecture.** Negative effect is small (1–2 pp) but consistent — robust across 4 mono-bias inits, 3 dropouts, 2 d_models, 3 seeds, 2 regimes. p < 0.001 in both regimes.
+2. **The win comes from oversampling irregulars**, not from architectural innovation. +4.5 pp balanced from regime change alone, holding architecture fixed.
+3. Best v20 oversample no-slot result (68.8%) is comparable to v17a/v10a single-LSTM ceilings (~67–68%) and below the v16e MoE ceiling (71.2%). v6-family + oversample is competitive but the MoE/biLSTM family still has the lead.
+
+## 2026-04-30: v22 Hard Monotonic Neural Transducer (HMNT)
+
+After concluding the v20 sweep that slot attention gives no benefit, the next direction is to push past the irregular ceiling using a different inductive bias entirely: **explicit edit operations with a hard monotonic source pointer**, after Aharoni & Goldberg 2017. Replaces soft attention with a discrete `{STEP, END, WRITE(c)}` action set and an explicit pointer over the source. Each STEP advances the pointer by 1; each WRITE emits a character without advancing.
+
+This addresses the core failure mode of v19's edit transducer (0.5% accuracy from pointer drift at inference): v19 had an over-rich action vocab (`{COPY, DELETE, INSERT, SUB}`) that introduced alignment ambiguity, and tried to fix exposure bias with scheduled sampling (which doesn't actually fix pointer-state divergence). The HMNT redesign:
+
+1. **Simpler action vocab** (3 + V vs 4 + 2V): COPY and SUB collapse into "WRITE(c) followed by STEP", removing oracle ambiguity.
+2. **DAgger imitation learning** (Makarov & Clematide 2018, UZH SIGMORPHON winner): roll out the model's own actions during training and re-query the oracle for the correct action at the (possibly divergent) state. Trains the model to recover from its own mistakes — the actual fix for exposure bias.
+
+### Code added
+
+1. `src/model/transducer_actions.py` — Action vocab layout, Needleman-Wunsch aligner (`align_to_actions`), deterministic applier (`apply_actions`), runtime oracle (`oracle_next_action`). Self-test verifies roundtrip + oracle rollout on 200 random + 7 hand-crafted cases.
+2. `src/model/transducer_decoder.py` — `TransducerDecoder`: LSTM that conditions on `[prev_action_emb; src_char_at_ptr; encoder_state_at_ptr; bahdanau_context]` and predicts next action. Forward supports both pure teacher forcing (`use_dagger=False`) and DAgger β-mixing (`use_dagger=True`, `beta>0`). Greedy decode applies actions deterministically.
+3. `src/model/full_model.py` — `decoder_type="transducer"` branch. Bypasses standard CE loss; uses model-returned `(logits, targets, mask)` for masked cross-entropy. Greedy-decode dispatch wraps action output in SOS/EOS for evaluator compatibility.
+4. `src/data/dataset.py` — `use_transducer` flag returns precomputed action targets as the 4th element of each sample (compatible with existing 4-tuple collate path).
+5. `src/train.py` — `_strip_specials` helper builds per-sample raw lists for the DAgger oracle. New config keys: `dagger_start_epoch`, `dagger_beta_max`, `dagger_anneal_epochs`. Per-epoch β computation, plus a transducer-specific log line.
+6. `scripts/verify_transducer_build.py` — CPU smoke test: constructs the model with HMNT, runs TF + DAgger forward/backward, greedy decodes. All checks pass.
+
+### Configs and submissions
+
+- `configs/v22a_transducer_tf.yaml` — pure teacher forcing baseline. BiLSTM(2L) + HMNT decoder(2L), d_model=128, dropout=0.3, oversample regime, 200 epochs, patience=30.
+- `configs/v22b_transducer_dagger.yaml` — same architecture, plus DAgger from epoch 50, β annealed 0 → 0.3 over 50 epochs.
+
+Submitted to SLURM:
+- v22a (job 1784518) → gpu_devel
+- v22b (job 1784517) → gpu
+
+Eval will report regular/irregular/balanced + wug counts. Hypothesis: TF-only HMNT should match v10a-tier regulars and improve irregulars modestly (cleaner inductive bias than soft-attention copy); DAgger should add another lift by closing the train-vs-inference state-distribution gap. Published HMNT numbers on SIGMORPHON English are ~98% reg / ~85–92% irr; if v22b approaches that range, balanced jumps from 71.2% (v16e) toward ~93–95%.
+
+## 2026-04-30: v21 Rumelhart & McClelland two-phase results — 44/48 done
+
+Implemented R&M (1986) two-phase regimen: train on a small balanced vocabulary (~270 verbs) first, then expand to full set. Code: `phase1_epochs` and `phase1_regime` config keys in `train.py`. Per-epoch val accuracy split by reg/irreg in `history.json` (`track_val_split: true`). Aggregator: `scripts/aggregate_v21.py`. Plots: `results/v21_plots/u_shape_*.png`.
+
+3 of 6 `p1=100 oversample noslot` runs got cancelled mid-queue and never completed. Picture is clear regardless.
+
+### Cell summary (mean ± std over 3 seeds, n=2 for one cell)
+
+| p1 | regime | slots | bal | reg | irr | wug_irr |
+|---|---|---|---|---|---|---|
+| 0 | natural | noslot | **58.2 ± 3.5** | 94.8 | 21.5 | 0.7/90 |
+| 0 | natural | slots | 55.5 ± 4.5 | 95.3 | 15.7 | 1.7/90 |
+| 0 | oversample | noslot | **59.8 ± 2.6** | 93.8 | 25.8 | 4.3/90 |
+| 0 | oversample | slots | 55.7 ± 5.7 | 92.0 | 19.3 | 3.7/90 |
+| 30 | natural | noslot | 54.0 ± 4.8 | 94.1 | 13.9 | 0.3/90 |
+| 30 | natural | slots | 56.6 ± 5.0 | 95.6 | 17.7 | 0.7/90 |
+| **30** | **oversample** | **noslot** | **62.4 ± 6.4** | 93.3 | **31.6** | 1.3/90 |
+| 30 | oversample | slots | 57.0 ± 7.1 | 93.4 | 20.5 | 2.7/90 |
+| 60 | natural | noslot | 52.6 ± 5.3 | 93.1 | 12.2 | 0.7/90 |
+| 60 | natural | slots | 51.3 ± 5.9 | 90.7 | 11.8 | 1.7/90 |
+| 60 | oversample | noslot | 58.0 ± 5.3 | 90.3 | 25.7 | 2.7/90 |
+| 60 | oversample | slots | 56.9 ± 4.7 | 94.1 | 19.8 | 4.7/90 |
+| 100 | natural | noslot | 47.4 ± 5.9 | 82.1 | 12.6 | 1.0/90 |
+| 100 | natural | slots | 46.2 ± 4.9 | 83.9 | 8.4 | 1.3/90 |
+| 100 | oversample | slots | 53.6 ± 7.0 | 85.4 | 21.8 | **7.0/90** |
+| 100 | oversample | noslot | (missing — 3 runs cancelled) | | | |
+
+### Δ(phase1) vs baseline (paired by seed)
+
+| regime | slots | p1=30 | p1=60 | p1=100 |
+|---|---|---|---|---|
+| natural | noslot | −4.14 pp | −5.53 pp | −11.42 pp |
+| natural | slots | +1.17 pp | −4.21 pp | −9.32 pp |
+| **oversample** | **noslot** | **+2.66 pp** | −1.77 pp | (missing) |
+| oversample | slots | +1.32 pp | +1.25 pp | −2.02 pp |
+
+### Findings
+
+1. **Only one cell helps over baseline**: p1=30 oversample noslot, +2.66 pp balanced (irregular: +5.8 pp). Best single run (seed 3): **69.05% balanced, 43.75% irregular** — the highest balanced accuracy of any v6-family run.
+
+2. **Long phase 1 is catastrophic in natural regime**: −11 pp balanced at p1=100 noslot. Phase 1 only has ~135 regular train examples, so the model never sees enough regulars to compensate before patience expires.
+
+3. **Slots cope better with long phase 1 in oversample**: p1=60 oversample is the only configuration where slots beat noslots paired-by-seed (+1.25 vs −1.77 pp). The slot bottleneck may be acting as a regularizer that preserves early phase-1 irregular knowledge during phase 2.
+
+4. **Wug-irregular generalization climbs with phase 1 length** in oversample: best at p1=100 oversample slots → 7.0/90 mean (8/90 single-seed peak). This is ~2× the baseline rate of 3-4/90. Even though balanced accuracy degrades, the model becomes more receptive to applying irregular patterns to nonce verbs.
+
+5. **The classic R&M U-shape on irregulars** does appear within individual seed runs at the phase transition. Example (p1=100 oversample slots, seed 1):
+   - Epoch 100 (phase-1 end): irr=11.1%
+   - Epoch 101 (phase 2 start): **irr=5.6%** (overregularization dip)
+   - Epoch 116: irr=22.2% (recovery, exceeds phase-1 peak)
+   - Epoch 200: irr=16.7% (settled)
+   
+   But the val set has only 16-19 irregulars, so per-epoch variance washes out the dip when averaged across seeds. The U-shape is real but noisy at this dataset size.
+
+### Implications
+
+The R&M two-phase regimen isn't a free lunch. The headline takeaway is:
+- A *short* phase 1 (~30 epochs, equal to ~3× the size of phase 1 vocabulary in epochs) on the oversampled regime gives the strongest single-cell number of the v6 family (69%).
+- A *long* phase 1 hurts everywhere except at wug generalization, where it helps.
+- The U-shape pattern is observable in individual runs but washed out in averages.
+

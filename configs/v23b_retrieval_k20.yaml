@@ -1,0 +1,40 @@
+# v23b: HMNT + retrieval (k=20). Same as v23a but bumps the kNN width.
+#
+# v23a (k=5) saturated at ~25% irregular accuracy, exactly matching the
+# theoretical retrieval-only ceiling (5/19 test irregulars have a useful
+# irregular exemplar in top-5). Hypothesis: pushing k to 20 raises that
+# ceiling because the right pattern-mate (e.g. ki:p->kEpt for deal/dealt)
+# may be at rank 8-15 in edit distance even when it's not in top-5.
+#
+# Risk: more retrieved memory = the decoder must learn to pick 1-of-20
+# instead of 1-of-5 by attention. If the model can't, performance flat.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+use_retrieval: true
+retrieval_k: 20
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v23b_retrieval_k20"
+results_dir: "../results/v23b_retrieval_k20"
+plot_every: 5
+track_val_split: true

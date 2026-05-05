@@ -102,7 +102,8 @@ class MoEDecoder(nn.Module):
                  dec_bottleneck: int = 0,
                  routing_mode: str = "soft", gumbel_tau: float = 1.0,
                  lambda_balance: float = 0.01,
-                 alpha_cls_router: float = 0.0):
+                 alpha_cls_router: float = 0.0,
+                 use_retrieval: bool = False):
         super().__init__()
         self.num_experts = num_experts
         self.pad_idx = pad_idx
@@ -115,6 +116,7 @@ class MoEDecoder(nn.Module):
             use_cls_aux=(alpha_cls_router > 0),
         )
 
+        self.use_retrieval = use_retrieval
         self.experts = nn.ModuleList([
             LSTMDecoder(
                 vocab_size=vocab_size, d_model=d_model,
@@ -122,6 +124,7 @@ class MoEDecoder(nn.Module):
                 pad_idx=pad_idx, use_copy=use_copy,
                 dec_bottleneck=dec_bottleneck,
                 lstm_hidden=expert_hidden,
+                use_retrieval=use_retrieval,
             )
             for _ in range(num_experts)
         ])
@@ -131,7 +134,9 @@ class MoEDecoder(nn.Module):
 
     def forward(self, tgt: torch.Tensor, memory: torch.Tensor,
                 encoder_out: torch.Tensor | None = None,
-                src_tokens: torch.Tensor | None = None) -> torch.Tensor:
+                src_tokens: torch.Tensor | None = None,
+                retrieval_memory: torch.Tensor | None = None,
+                retrieval_pad_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
         Same signature as LSTMDecoder.forward() — drop-in replacement.
 
@@ -140,9 +145,15 @@ class MoEDecoder(nn.Module):
             memory: (B, N, d_model) encoder output (no slots in MoE mode)
             encoder_out: (B, N, d_model) or None (for copy mechanism)
             src_tokens: (B, N) source tokens (for copy/padding)
+            retrieval_memory: (B, M, d_model) retrieved-target memory, or None
+            retrieval_pad_mask: (B, M) True where padded, or None
         Returns:
             logits: (B, m, V)
         """
+        retr_kwargs = {}
+        if self.use_retrieval:
+            retr_kwargs["retrieval_memory"] = retrieval_memory
+            retr_kwargs["retrieval_pad_mask"] = retrieval_pad_mask
         # Compute padding mask from src_tokens
         pad_mask = None
         if src_tokens is not None:
@@ -163,10 +174,18 @@ class MoEDecoder(nn.Module):
                 mask_k = (expert_idx == k)  # (B,)
                 if not mask_k.any():
                     continue
+                # Slice retrieval memory by sample subset too
+                expert_retr_kwargs = {}
+                if self.use_retrieval and retrieval_memory is not None:
+                    expert_retr_kwargs["retrieval_memory"] = retrieval_memory[mask_k]
+                    expert_retr_kwargs["retrieval_pad_mask"] = (
+                        retrieval_pad_mask[mask_k] if retrieval_pad_mask is not None else None
+                    )
                 logits_k = self.experts[k](
                     tgt[mask_k], memory[mask_k],
                     encoder_out=encoder_out[mask_k] if encoder_out is not None else None,
                     src_tokens=src_tokens[mask_k] if src_tokens is not None else None,
+                    **expert_retr_kwargs,
                 )
                 logits[mask_k] = logits_k
             return logits
@@ -175,7 +194,7 @@ class MoEDecoder(nn.Module):
         all_logits = []
         for expert in self.experts:
             logits_k = expert(tgt, memory, encoder_out=encoder_out,
-                              src_tokens=src_tokens)  # (B, m, V)
+                              src_tokens=src_tokens, **retr_kwargs)  # (B, m, V)
             all_logits.append(logits_k)
 
         # Stack: (B, K, m, V), weight: (B, K, 1, 1)

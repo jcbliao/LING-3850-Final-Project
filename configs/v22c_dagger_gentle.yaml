@@ -1,0 +1,53 @@
+# v22c: HMNT + DAgger ONLY (no retrieval), much gentler schedule.
+#
+# v22b and v25 both showed that DAgger crashes performance the moment it
+# engages, even at β=0.01. Two confounds in those runs:
+#   (1) DAgger started early (epoch 15-50), before the TF baseline had a
+#       chance to fully converge.
+#   (2) The β ramp was steep (0 → 0.3 over 30 epochs) — at training-loss
+#       ~0.001 the model is hyper-overfit to the TF input distribution,
+#       so even small perturbations push it off a cliff.
+#
+# v22c isolates DAgger from retrieval and uses a much more conservative
+# schedule:
+#   - Start at epoch 50 (after TF has fully converged and overfit).
+#   - β anneals 0 → 0.05 over 100 epochs (~0.0005/epoch).
+#   - patience=80 so the run survives the inevitable initial val_acc dip.
+#
+# val_acc checkpoint criterion (track_val_split: true) protects against
+# DAgger-induced regressions: even if DAgger never helps, the saved model
+# will be the pre-DAgger TF baseline.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+# Retrieval OFF — isolate DAgger
+use_retrieval: false
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 250
+patience: 80
+
+dagger_start_epoch: 50
+dagger_beta_max: 0.05
+dagger_anneal_epochs: 100
+
+save_dir: "../checkpoints/v22c_dagger_gentle"
+results_dir: "../results/v22c_dagger_gentle"
+plot_every: 5
+track_val_split: true

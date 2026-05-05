@@ -1,0 +1,47 @@
+# v22b: HMNT with DAgger imitation learning.
+# Phase 1 (epochs 1-49):    pure teacher forcing on oracle actions.
+# Phase 2 (epochs 50+):     β-mixing — with prob β, substitute model's own
+#                           predicted action as the next input AND for
+#                           pointer-state updates; oracle is re-queried at
+#                           the (possibly divergent) state for the loss
+#                           target. β anneals 0 -> 0.3 over 50 epochs.
+# Mitigates pointer-drift exposure bias that killed v19.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+
+# DAgger schedule: start at epoch 15 (around v22a's val_loss minimum, when the
+# model has converged on the oracle trajectory but hasn't yet overfit), anneal
+# beta 0 -> 0.3 over 30 epochs. Patience bumped + early stopping disabled
+# until DAgger fully ramps up (handled by train.py's early_stop_after gate).
+dagger_start_epoch: 15
+dagger_beta_max: 0.3
+dagger_anneal_epochs: 30
+patience: 40
+
+save_dir: "../checkpoints/v22b_transducer_dagger"
+results_dir: "../results/v22b_transducer_dagger"
+plot_every: 5
+
+# Per-epoch greedy-decode accuracy (reg/irr/all). Adds ~5s/epoch but is the
+# only signal that reflects what DAgger optimizes — val_loss is TF-aligned
+# and shifts under DAgger even when the model's actual decoding improves.
+track_val_split: true

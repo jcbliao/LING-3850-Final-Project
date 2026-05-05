@@ -1,0 +1,49 @@
+# v24a: HMNT + class-conditional retrieval (true-class upper bound).
+#
+# Inflection-class taxonomy (auto-derived from src/tgt alignment):
+#   REG_D, REG_T, REG_ID, NO_CHANGE, ABLAUT, EPT, OUGHT, OTE, OTHER_IRREG.
+# Train class distribution (3231 items, seed 42):
+#   REG_D=1640, REG_T=605, REG_ID=866, ABLAUT=67, EPT=10, OUGHT=6,
+#   OTE=3, OTHER_IRREG=34.
+#
+# Retrieval restricts kNN to within the query's class (vs v23's global edit-
+# distance kNN). Hypothesis: for ept/ought/ablaut test irregulars whose
+# right pattern-mates are far in surface edit distance (e.g. deal/dealt
+# whose neighbors are pi:l/si:l rather than ki:p/sli:p), in-class retrieval
+# surfaces the morphologically-relevant exemplars instead.
+#
+# CAVEAT: train/val/test all use TRUE class (derived from tgt) for retrieval.
+# For val/test items this is a tiny information leak. v24a measures the
+# CEILING; a future v24b would replace with a learned class predictor for
+# eval-time retrieval.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+use_retrieval: true
+retrieval_k: 5
+use_class_retrieval: true
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v24a_class_retrieval"
+results_dir: "../results/v24a_class_retrieval"
+plot_every: 5
+track_val_split: true

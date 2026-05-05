@@ -63,9 +63,17 @@ Pipeline: `Encoder → [SlotAttentionModule → L0Drop] → Decoder`
 | 4a | `TransformerCharDecoder` | `src/model/decoder.py` | (tgt, M') → logits — with optional copy mechanism |
 | 4b | `LSTMDecoder` | `src/model/decoder.py` | (tgt, M') → logits — Bahdanau attention, no copy needed |
 | 4c | `MoEDecoder` | `src/model/moe_decoder.py` | (tgt, H) → logits — K expert LSTMDecoders with routing |
+| 4d | `TransducerDecoder` | `src/model/transducer_decoder.py` | (action_targets, H, src) → action logits — HMNT, explicit pointer |
 | All | `SlotAttentionTransducer` | `src/model/full_model.py` | Combines all + loss computation |
 
-Encoder selected via `encoder_type: "transformer"` (default) or `"bilstm"`. Decoder selected via `decoder_type: "transformer"` (default), `"lstm"`, or `"moe_lstm"`. LSTM decoder uses Bahdanau attention, generates every character (no copy mechanism), naturally learns monotonic alignment.
+Encoder selected via `encoder_type: "transformer"` (default) or `"bilstm"`. Decoder selected via `decoder_type: "transformer"` (default), `"lstm"`, `"moe_lstm"`, or `"transducer"` (HMNT, see below). LSTM decoder uses Bahdanau attention, generates every character (no copy mechanism), naturally learns monotonic alignment.
+
+### Hard Monotonic Neural Transducer (HMNT) — `decoder_type: "transducer"`
+- After Aharoni & Goldberg 2017. Replaces character-level decoding with an action sequence over `{STEP, END, WRITE(c)}` and an explicit source pointer.
+- Action vocab in `src/model/transducer_actions.py`: layout `[PAD, STEP, END, WRITE_0, ..., WRITE_{V-1}]`, total size `3 + char_vocab_size`. `align_to_actions` (Needleman-Wunsch) produces a deterministic oracle script per `(src, tgt)`. `apply_actions` is the deterministic inverse. `oracle_next_action(src, tgt, ptr, output_len)` returns the optimal next action from any reachable state — required for DAgger.
+- Decoder LSTM input: `[prev_action_emb; src_char_at_ptr; encoder_state_at_ptr; bahdanau_context]`. Output projects to action vocab.
+- **DAgger β-mixing** (Makarov & Clematide 2018): at each rollout step, with probability β substitute the model's argmax for the next-input action AND for pointer-state updates; the oracle is re-queried at the (possibly divergent) state to provide the loss target. Trains the model to recover from its own mistakes, fixing the pointer-drift exposure bias that killed v19. Config keys: `dagger_start_epoch`, `dagger_beta_max`, `dagger_anneal_epochs`. β=0 (default) ⇒ pure teacher forcing.
+- Pairs naturally with `use_slots: false` (HMNT subsumes copy via WRITE actions; pointer indexes encoder positions directly).
 
 ### MoE Decoder (Mixture of Expert Decoders)
 - **`decoder_type: "moe_lstm"`** with **`use_slots: false`** — replaces slot attention entirely
@@ -214,7 +222,7 @@ Note: Training regime experiments (balanced, irregular_first) are implemented in
 | Ma & Gao 2022 (Transformer) | ~90-97% | ~80-90% | Standard Transformer seq2seq |
 | Our best (v5, no slots) | 32.4% | 0% | Transformer + copy (no alignment bias) |
 
-**Fixed by monotonic alignment bias** (v6): Gaussian positional bias `bias(t,n) = -alpha*(t-n)²` added to copy attention. `alpha` is learnable (init 1.0). No length scaling needed for morphology (output ≈ input + suffix).
+**Fixed by monotonic alignment bias** (v6): Gaussian positional bias `bias(t,n) = -alpha*(t-n)²` added to copy attention. `alpha` is learnable; init configurable via `mono_alpha_init` (default 1.0, swept in v20). No length scaling needed for morphology (output ≈ input + suffix).
 
 | Approach | Regular | Irregular | Balanced Acc | Key mechanism |
 |---|---|---|---|---|
@@ -521,6 +529,70 @@ Sequential versions: pointer drift at inference. Scheduled sampling doesn't fix 
 | v16b | gumbel | 93.8% | 15.8% | 54.8% | 40/90 | 13/90 |
 
 **v16e is the new best model** — 71.2% balanced accuracy, 47.4% irregular (9/19). Gumbel + diversity loss is the winning combination. Clamped diversity loss bug (v16d) caused negative training loss but didn't prevent learning.
+
+### v20: Final-architecture stability sweep (2026-04-29)
+
+Architecture fixed to v6 family (Transformer + copy + monotonic bias). Two regimes × full grid:
+
+- Natural: `configs/sweep_v20/`, slurm `scripts/slurm_jobs_v20/`
+- Oversample: `configs/sweep_v20_oversample/`, slurm `scripts/slurm_jobs_v20_oversample/` (chained via `--dependency=afterany`)
+
+Grid (per regime): `use_slots`×`seed`×`mono_alpha_init`×`dropout`×`d_model` = 2×3×4×3×2 = **144 runs**. Total **288 runs**, all completed.
+
+New config key: **`mono_alpha_init`** (float, default 1.0) — initializes the learnable `copy_align_log_alpha` to `log(mono_alpha_init)`.
+
+Aggregator: `scripts/aggregate_v20.py` → `results/v20_sweep_{results,summary}.csv`.
+
+**Result: slots hurt, paired & significant in both regimes.**
+
+| Regime | Slots | n | Bal mean ± std | Reg | Irr |
+|---|---|---|---|---|---|
+| natural | noslot | 72 | **0.546 ± 0.046** | 0.946 | 0.146 |
+| natural | slots | 72 | 0.533 ± 0.047 | 0.937 | 0.129 |
+| oversample | noslot | 72 | **0.591 ± 0.051** | 0.930 | 0.252 |
+| oversample | slots | 72 | 0.572 ± 0.050 | 0.927 | 0.217 |
+
+Paired t-test slots − noslot, 72 pairs/regime: natural Δ=−1.35 pp (p=0.00012), oversample Δ=−1.88 pp (p=0.00061). Effect small (~1–2 pp) but reliable across seeds and hparams.
+
+**Hparam effects**: dropout monotone (0.3 > 0.2 > 0.1, biggest under oversample); d_model 64≈128; mono_alpha_init 0.5/1.0 best; oversample > natural by ~4.5 pp balanced (driven by +10 pp irregular).
+
+**Best runs**:
+- Natural: `v20_noslot_d64_dr0p2_a1_s1` → 64.0% bal (97.9 reg, 30.0 irr, 55/90 wug-reg)
+- Oversample: `v20_oversample_noslot_d64_dr0p2_a0p25_s3` → 68.8% bal (93.8 reg, 43.8 irr, 49/90 wug-reg)
+
+### v21: Rumelhart & McClelland two-phase training (2026-04-30)
+
+Implements the R&M (1986) curriculum: phase 1 trains on a small balanced vocabulary (~270 verbs, ~50% irregular) for `phase1_epochs` epochs, then phase 2 expands to the full set. Code: `phase1_epochs` and `phase1_regime` config keys in `train.py`. `track_val_split: true` records per-epoch val reg/irreg accuracy in `history.json` for U-shape plotting.
+
+Sweep: `use_slots × phase1_epochs={0,30,60,100} × phase2_regime={natural,oversample} × seed={1,2,3}` = 48 runs. 44 completed (3 of 6 `p1=100 oversample noslot` cancelled). Aggregator: `scripts/aggregate_v21.py`. Plots: `results/v21_plots/u_shape_*.png`.
+
+**Best cell: p1=30 oversample noslot → 62.4% balanced (n=3, +2.66 pp over baseline noslot oversample)**. Best single run: `v21_p130_oversample_noslot_s3` → 69.0% balanced, 43.8% irregular — highest of any v6-family run.
+
+**Δ(phase1) vs baseline (paired by seed)**:
+
+| regime | slots | p1=30 | p1=60 | p1=100 |
+|---|---|---|---|---|
+| natural | noslot | −4.14 pp | −5.53 pp | −11.42 pp |
+| natural | slots | +1.17 pp | −4.21 pp | −9.32 pp |
+| **oversample** | **noslot** | **+2.66 pp** | −1.77 pp | (missing) |
+| oversample | slots | +1.32 pp | +1.25 pp | −2.02 pp |
+
+**Findings**:
+- Only `p1=30 oversample noslot` improves over baseline. Long phase 1 (100 ep) is catastrophic in natural (−11 pp) — too few regulars seen before patience expires.
+- Slots become competitive with longer phase 1 in oversample (only cell where slots beat noslots is p1=60). Bottleneck may regularize against forgetting phase-1 irregulars.
+- **Wug-irregular generalization climbs with phase 1 length**: p1=100 oversample slots → 7.0/90 mean (8/90 peak), ~2× baseline rate. Even when balanced accuracy degrades, the model applies irregular patterns more readily to nonce verbs.
+- The classic R&M U-shape (overregularization dip on irregulars at the phase transition) IS observable within individual seed runs (e.g. p1=100 oversample slots seed 1: irr 11.1% at ep100 → 5.6% at ep101 → 22.2% at ep116). Per-epoch variance from the small val set (~16 irregulars) washes it out at cell mean level.
+
+### v22: Hard Monotonic Neural Transducer (in flight, 2026-04-30)
+
+After v20 confirmed slots don't help, v22 changes the inductive bias entirely. Explicit `{STEP, END, WRITE(c)}` action vocab + source pointer + (optional) DAgger imitation learning. Fixes v19's pointer-drift failure mode (0.5% acc) by simplifying the action set and using oracle re-querying at runtime instead of scheduled sampling.
+
+| Config | Mode | DAgger | Job |
+|---|---|---|---|
+| v22a | pure teacher forcing | none | 1784518 (gpu_devel) |
+| v22b | TF + DAgger phase 2 | β anneals 0→0.3 epochs 50→100 | 1784517 (gpu) |
+
+Both: biLSTM(2L) encoder + transducer decoder(2L), d_model=128, dropout=0.3, oversample regime, lr=1e-3, 200 epochs, patience=30. No slots. Target ceiling per published HMNT systems on SIGMORPHON English: ~98% reg / ~85–92% irr (would push balanced from 71.2% toward ~93–95%).
 
 ### Revised v1 results (static L0, stronger lambda — FAILED)
 

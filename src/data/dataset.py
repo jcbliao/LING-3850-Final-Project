@@ -9,6 +9,7 @@ from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 
 from .vocab import CharVocab
+from .retrieval import RetrievalIndex  # noqa: F401  (re-exported for callers)
 
 
 def load_english_merged(filepath: str) -> List[dict]:
@@ -157,12 +158,70 @@ class PastTenseDataset(Dataset):
 
     def __init__(self, entries: List[dict], vocab: CharVocab,
                  use_phonological: bool = True, use_edits: bool = False,
-                 use_edit_labels: bool = False):
+                 use_edit_labels: bool = False, use_transducer: bool = False,
+                 retrieval_index=None, use_class_retrieval: bool = False,
+                 retrieval_mode: str = "knn"):
         self.entries = entries
         self.vocab = vocab
         self.use_phonological = use_phonological
         self.use_edits = use_edits
         self.use_edit_labels = use_edit_labels
+        self.use_transducer = use_transducer
+        self.retrieval_index = retrieval_index
+        self.use_class_retrieval = use_class_retrieval
+        # Precompute the retrieved-target token-id sequences once per item.
+        # Each entry: list of k tensors (1D) of varying length.
+        # When use_class_retrieval is on, use query_in_class(src, true_class)
+        # instead of plain edit-distance kNN. NOTE: true_class is derived from
+        # (src, tgt), so for val/test items this is a slight information leak.
+        # v24a measures the *ceiling* of class-conditional retrieval; a future
+        # variant should swap in a learned class predictor for eval-time queries.
+        self._retrieved: Optional[list] = None
+        if retrieval_index is not None:
+            from .retrieval import classify_inflection
+            self._retrieved = []
+            self._cluster_ids: list[int] = []
+            for e in entries:
+                src_chars = e["phon_src"] if use_phonological else list(e["orth_src"])
+                tgt_chars = e["phon_tgt"] if use_phonological else list(e["orth_tgt"])
+                # Track true cluster ID for each item (used by the learned
+                # cluster-predictor head's auxiliary CE loss when enabled).
+                self._cluster_ids.append(
+                    retrieval_index.cluster_id_for(src_chars, tgt_chars))
+                if retrieval_mode == "random":
+                    # Negative control: random k pairs (deterministic per src).
+                    neighbors = retrieval_index.query_random(src_chars)
+                elif retrieval_mode == "cluster":
+                    # Unsupervised cluster retrieval: language-agnostic
+                    # alternative to use_class_retrieval. Uses TRUE cluster
+                    # at val/test (small leak, same as use_class_retrieval).
+                    cid = retrieval_index.cluster_id_for(src_chars, tgt_chars)
+                    neighbors = retrieval_index.query_in_cluster(src_chars, cid)
+                elif use_class_retrieval:
+                    cls = classify_inflection(src_chars, tgt_chars)
+                    neighbors = retrieval_index.query_in_class(src_chars, cls)
+                else:
+                    neighbors = retrieval_index.query(src_chars)
+                tgts = retrieval_index.get_targets(neighbors)
+                # Encode each retrieved tgt to ids (no SOS/EOS — flatten as memory).
+                tgt_ids = [
+                    torch.tensor(self.vocab.encode(t, add_sos=False, add_eos=False),
+                                 dtype=torch.long)
+                    for t in tgts
+                ]
+                # Class-conditional retrieval may return < k items if the class
+                # has few members. Pad with copies of the closest available item
+                # so collate_fn's (B, k, L) shape stays consistent across the batch.
+                # Use UNK (not PAD) as the absolute-empty fallback — BiLSTMEncoder
+                # uses pack_padded_sequence which crashes on length-0 sequences,
+                # so retrieved memory entries must contain at least one non-PAD
+                # token even when no real neighbor exists.
+                fallback = torch.tensor([vocab.unk_idx], dtype=torch.long)
+                # Replace any zero-length encodings with the UNK fallback.
+                tgt_ids = [t if t.numel() > 0 else fallback for t in tgt_ids]
+                while len(tgt_ids) < retrieval_index.k:
+                    tgt_ids.append(tgt_ids[-1] if tgt_ids else fallback)
+                self._retrieved.append(tgt_ids)
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -207,9 +266,53 @@ class PastTenseDataset(Dataset):
                     reg_label,
                     torch.tensor(edit_ids, dtype=torch.long))
 
-        return (torch.tensor(src_ids, dtype=torch.long),
+        if self.use_transducer:
+            from model.transducer_actions import align_to_actions
+            src_raw = self.vocab.encode(src, add_sos=False, add_eos=False)
+            tgt_raw = self.vocab.encode(tgt, add_sos=False, add_eos=False)
+            action_ids = align_to_actions(src_raw, tgt_raw)
+            base = (torch.tensor(src_ids, dtype=torch.long),
+                    torch.tensor(tgt_ids, dtype=torch.long),
+                    reg_label,
+                    torch.tensor(action_ids, dtype=torch.long))
+            if self._retrieved is not None:
+                return base + (self._retrieved[idx],)
+            return base
+
+        base = (torch.tensor(src_ids, dtype=torch.long),
                 torch.tensor(tgt_ids, dtype=torch.long),
                 reg_label)
+        if self._retrieved is not None:
+            # Non-transducer + retrieval (Transformer/LSTM): append the k
+            # retrieved tgt id tensors as a 4th element. If a cluster ID is
+            # available (whenever an index is provided), pass it as a 5th
+            # element for the optional learned-cluster-predictor's aux loss.
+            extra = (self._retrieved[idx],)
+            if self._cluster_ids:
+                extra = extra + (int(self._cluster_ids[idx]),)
+            return base + extra
+        return base
+
+
+def _pad_retrieved(retrieved_per_sample, pad_idx: int):
+    """Pad a list-of-lists-of-1D-tensors into a (B, k, L_max) tensor + mask.
+
+    `retrieved_per_sample` has length B; each element is a list of k 1D
+    tensors of varying length. Returns:
+        retr_ids:  (B, k, L_max)  long, padded with pad_idx
+        retr_mask: (B, k, L_max)  bool — True where padded
+    """
+    B = len(retrieved_per_sample)
+    k = len(retrieved_per_sample[0])
+    L_max = max(t.size(0) for sample in retrieved_per_sample for t in sample)
+    retr_ids = torch.full((B, k, L_max), pad_idx, dtype=torch.long)
+    retr_mask = torch.ones((B, k, L_max), dtype=torch.bool)
+    for i, sample in enumerate(retrieved_per_sample):
+        for j, t in enumerate(sample):
+            L = t.size(0)
+            retr_ids[i, j, :L] = t
+            retr_mask[i, j, :L] = False
+    return retr_ids, retr_mask
 
 
 def collate_fn(batch, pad_idx: int = 0):
@@ -220,8 +323,39 @@ def collate_fn(batch, pad_idx: int = 0):
         tgt: (batch, max_tgt_len)
         reg_labels: (batch,) — 0=regular, 1=irregular
         edits: (batch, max_edit_len) — only if edit sequences present
+        retr_ids, retr_mask: (B, k, L) and (B, k, L) — only if retrieval is on
     """
-    if len(batch[0]) == 5:
+    n_fields = len(batch[0])
+    # has_retrieval_5 is the OLD transducer + retrieval shape:
+    # (src, tgt, label, action_ids, retrieved_list) — batch[3] is a 1D Tensor.
+    has_retrieval_5 = (n_fields == 5 and isinstance(batch[0][4], list)
+                       and not isinstance(batch[0][3], list))
+    has_retrieval_4 = (n_fields == 4 and isinstance(batch[0][3], list))
+    # 5-field with int cluster_id at position 4: (src, tgt, label, retrieved_list, cluster_id)
+    has_retrieval_4_plus_cluster = (n_fields == 5
+                                     and isinstance(batch[0][3], list)
+                                     and isinstance(batch[0][4], int))
+
+    if has_retrieval_4_plus_cluster:
+        # Non-transducer + retrieval + cluster ID
+        srcs, tgts, labels, retrieved, cluster_ids = zip(*batch)
+        src_padded = pad_sequence(srcs, batch_first=True, padding_value=pad_idx)
+        tgt_padded = pad_sequence(tgts, batch_first=True, padding_value=pad_idx)
+        reg_labels = torch.tensor(labels, dtype=torch.long)
+        retr_ids, retr_mask = _pad_retrieved(retrieved, pad_idx)
+        cluster_t = torch.tensor(cluster_ids, dtype=torch.long)
+        return (src_padded, tgt_padded, reg_labels, retr_ids, retr_mask, cluster_t)
+
+    if has_retrieval_4:
+        # Non-transducer + retrieval (Transformer/LSTM): (src, tgt, label, retrieved_list)
+        srcs, tgts, labels, retrieved = zip(*batch)
+        src_padded = pad_sequence(srcs, batch_first=True, padding_value=pad_idx)
+        tgt_padded = pad_sequence(tgts, batch_first=True, padding_value=pad_idx)
+        reg_labels = torch.tensor(labels, dtype=torch.long)
+        retr_ids, retr_mask = _pad_retrieved(retrieved, pad_idx)
+        return src_padded, tgt_padded, reg_labels, retr_ids, retr_mask
+
+    if n_fields == 5 and not has_retrieval_5:
         # Edit labeler: (src, tgt, label, edit_labels, suffix)
         srcs, tgts, labels, edit_labels, suffixes = zip(*batch)
         src_padded = pad_sequence(srcs, batch_first=True, padding_value=pad_idx)
@@ -230,8 +364,17 @@ def collate_fn(batch, pad_idx: int = 0):
         suffix_padded = pad_sequence(suffixes, batch_first=True, padding_value=pad_idx)
         reg_labels = torch.tensor(labels, dtype=torch.long)
         return src_padded, tgt_padded, reg_labels, edit_label_padded, suffix_padded
-    elif len(batch[0]) == 4:
-        # Edit decoder: (src, tgt, label, edits)
+    elif has_retrieval_5:
+        # Transducer + retrieval: (src, tgt, label, actions, retrieved_list)
+        srcs, tgts, labels, actions, retrieved = zip(*batch)
+        src_padded = pad_sequence(srcs, batch_first=True, padding_value=pad_idx)
+        tgt_padded = pad_sequence(tgts, batch_first=True, padding_value=pad_idx)
+        action_padded = pad_sequence(actions, batch_first=True, padding_value=0)
+        reg_labels = torch.tensor(labels, dtype=torch.long)
+        retr_ids, retr_mask = _pad_retrieved(retrieved, pad_idx)
+        return src_padded, tgt_padded, reg_labels, action_padded, retr_ids, retr_mask
+    elif n_fields == 4:
+        # Edit decoder OR transducer w/o retrieval: (src, tgt, label, edits/actions)
         srcs, tgts, labels, edits = zip(*batch)
         src_padded = pad_sequence(srcs, batch_first=True, padding_value=pad_idx)
         tgt_padded = pad_sequence(tgts, batch_first=True, padding_value=pad_idx)

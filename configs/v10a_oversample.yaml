@@ -1,0 +1,37 @@
+# v10a + oversample regime — the missing cell for clean retrieval ablation.
+#
+# v10a (natural regime, no retrieval) hit 5% test irregular at seed 42.
+# v30b (oversample regime, with retrieval) hits 42%. The +37pp jump conflates
+# two changes. This run isolates the oversample contribution by matching
+# v30b's regime but keeping v10a's no-retrieval architecture.
+#
+# After this run completes, the clean retrieval contribution =
+#   v30b - v10a_oversample, with both at the same regime.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: false
+use_copy: false
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+alpha_recon: 0.0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 300
+patience: 30
+
+save_dir: "../checkpoints/v10a_oversample"
+results_dir: "../results/v10a_oversample"
+plot_every: 5
+track_val_split: true

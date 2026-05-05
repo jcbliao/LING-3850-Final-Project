@@ -1,0 +1,27 @@
+#!/bin/bash
+#SBATCH --job-name=v21_baseline_oversample_slots_s3
+#SBATCH --partition=gpu,gpu_devel
+#SBATCH --gres=gpu:1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+#SBATCH --time=00:20:00
+#SBATCH --output=/gpfs/radev/project/kuan/jl3795/slot_attention/logs/v21_sweep/%x_%j.out
+
+PROJECT_DIR=/gpfs/radev/project/kuan/jl3795/slot_attention
+mkdir -p "${PROJECT_DIR}/logs/v21_sweep"
+
+module load miniconda
+conda activate slot_attention
+
+cd "${PROJECT_DIR}/src"
+python train.py --config "${PROJECT_DIR}/configs/sweep_v21/v21_baseline_oversample_slots_s3.yaml" 2>&1
+
+SAVE_DIR=$(python -c "import yaml; c=yaml.safe_load(open('${PROJECT_DIR}/configs/sweep_v21/v21_baseline_oversample_slots_s3.yaml')); print(c.get('save_dir', '../checkpoints'))")
+CKPT_PATH="${PROJECT_DIR}/src/${SAVE_DIR}/best_model.pt"
+
+echo ""
+echo "=== Evaluation ==="
+python evaluate.py \
+    --checkpoint "${CKPT_PATH}" \
+    --data_path "${PROJECT_DIR}/data/RevisitPinkerAndPrince/experiment_1/english_merged.txt" \
+    --wug_dir "${PROJECT_DIR}/data/RevisitPinkerAndPrince/experiment_1_wugs/"

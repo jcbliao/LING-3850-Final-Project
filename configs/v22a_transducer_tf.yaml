@@ -1,0 +1,35 @@
+# v22a: Hard Monotonic Neural Transducer (HMNT), pure teacher forcing.
+# BiLSTM encoder + transducer decoder with explicit source pointer.
+# Action vocab: {STEP, END, WRITE(c)}. No slot attention, no copy mechanism
+# (HMNT subsumes copying via WRITE actions over an explicit pointer).
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+# DAgger disabled (pure teacher forcing baseline)
+dagger_start_epoch: 0
+dagger_beta_max: 0.0
+dagger_anneal_epochs: 0
+
+save_dir: "../checkpoints/v22a_transducer_tf"
+results_dir: "../results/v22a_transducer_tf"
+plot_every: 5

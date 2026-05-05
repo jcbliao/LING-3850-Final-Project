@@ -28,11 +28,14 @@ class TransformerCharDecoder(nn.Module):
 
     def __init__(self, vocab_size: int, d_model: int = 128, nhead: int = 4,
                  num_layers: int = 3, d_ff: int = 256, dropout: float = 0.1,
-                 pad_idx: int = 0, use_copy: bool = False):
+                 pad_idx: int = 0, use_copy: bool = False,
+                 mono_alpha_init: float = 1.0,
+                 use_retrieval: bool = False):
         super().__init__()
         self.d_model = d_model
         self.vocab_size = vocab_size
         self.use_copy = use_copy
+        self.use_retrieval = use_retrieval
         self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=pad_idx)
         self.pos_enc = PositionalEncoding(d_model, dropout=dropout)
         decoder_layer = nn.TransformerDecoderLayer(
@@ -40,6 +43,16 @@ class TransformerCharDecoder(nn.Module):
             dropout=dropout, batch_first=True,
         )
         self.transformer = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        # Optional second cross-attention pass over retrieval memory after the
+        # standard decoder stack. Applied as residual + LayerNorm so it can
+        # be added without disrupting the existing src cross-attn + copy
+        # mechanism. The retrieval head doesn't get a monotonic bias (retrieved
+        # positions don't correspond to source positions).
+        if use_retrieval:
+            self.retrieval_cross_attn = nn.MultiheadAttention(
+                d_model, nhead, dropout=dropout, batch_first=True,
+            )
+            self.retr_norm = nn.LayerNorm(d_model)
         self.output_proj = nn.Linear(d_model, vocab_size)
         self.pad_idx = pad_idx
 
@@ -55,12 +68,16 @@ class TransformerCharDecoder(nn.Module):
             nn.init.constant_(self.p_gen_linear.bias, -2.0)
             # Monotonic alignment bias: Gaussian centered on diagonal
             # log_alpha controls sharpness (higher = sharper peak on diagonal)
-            # Init: alpha=1.0 (log_alpha=0) — moderate bias, learnable
-            self.copy_align_log_alpha = nn.Parameter(torch.tensor(0.0))
+            # Init configurable via mono_alpha_init; parameter is learnable.
+            self.copy_align_log_alpha = nn.Parameter(
+                torch.tensor(math.log(mono_alpha_init))
+            )
 
     def forward(self, tgt: torch.Tensor, memory: torch.Tensor,
                 encoder_out: torch.Tensor | None = None,
-                src_tokens: torch.Tensor | None = None) -> torch.Tensor:
+                src_tokens: torch.Tensor | None = None,
+                retrieval_memory: torch.Tensor | None = None,
+                retrieval_pad_mask: torch.Tensor | None = None) -> torch.Tensor:
         """
         Args:
             tgt: (batch, m) target token indices (teacher-forced, includes <sos>)
@@ -83,6 +100,18 @@ class TransformerCharDecoder(nn.Module):
             tgt_mask=causal_mask,
             tgt_key_padding_mask=tgt_pad_mask,
         )
+
+        # Second cross-attention over retrieval memory (residual + norm).
+        # Lets the decoder pull additional context from the encoded
+        # retrieved-target sequences without disturbing the existing src
+        # cross-attention or the monotonic-biased copy below.
+        if self.use_retrieval and retrieval_memory is not None:
+            attn_out, _ = self.retrieval_cross_attn(
+                x, retrieval_memory, retrieval_memory,
+                key_padding_mask=retrieval_pad_mask,
+                need_weights=False,
+            )
+            x = self.retr_norm(x + attn_out)
 
         if not self.use_copy or encoder_out is None or src_tokens is None:
             return self.output_proj(x)
@@ -180,38 +209,44 @@ class LSTMDecoder(nn.Module):
     def __init__(self, vocab_size: int, d_model: int = 128,
                  num_layers: int = 1, d_ff: int = 256, dropout: float = 0.1,
                  pad_idx: int = 0, use_copy: bool = False,
-                 dec_bottleneck: int = 0, lstm_hidden: int = 0, **kwargs):
+                 dec_bottleneck: int = 0, lstm_hidden: int = 0,
+                 use_retrieval: bool = False, **kwargs):
         super().__init__()
         self.d_model = d_model
         self.vocab_size = vocab_size
         self.num_layers = num_layers
         self.pad_idx = pad_idx
         self.use_copy = use_copy
+        self.use_retrieval = use_retrieval
         # lstm_hidden=0 means use d_model (default behavior)
         self.lstm_dim = lstm_hidden if lstm_hidden > 0 else d_model
 
         self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=pad_idx)
         self.attention = BahdanauAttention(self.lstm_dim, d_model, attn_dim=d_model)
-        # LSTM input: embedding + attention context
+        # Optional second Bahdanau head over flattened retrieved-target memory.
+        # Mirrors what the HMNT and Transformer decoders do for retrieval.
+        retr_dim = d_model if use_retrieval else 0
+        if use_retrieval:
+            self.retrieval_attention = BahdanauAttention(self.lstm_dim, d_model,
+                                                         attn_dim=d_model)
+        # LSTM input: [embedding; src_context; (retr_context if use_retrieval)]
         self.lstm = nn.LSTM(
-            input_size=d_model + d_model,  # [embedding(d_model); context(d_model)]
+            input_size=d_model + d_model + retr_dim,
             hidden_size=self.lstm_dim,
             num_layers=num_layers,
             dropout=dropout if num_layers > 1 else 0.0,
             batch_first=True,
         )
         self.dropout = nn.Dropout(dropout)
-        # Output projection: [lstm_output; context] → vocab
-        # lstm_output is lstm_dim, context is d_model (full slot dimension)
-        # Optional bottleneck constrains decoder's independent capacity
+        # Output projection: [lstm_output; src_context; (retr_context)] → vocab
         if dec_bottleneck > 0:
             self.output_proj = nn.Sequential(
-                nn.Linear(self.lstm_dim + d_model, dec_bottleneck),
+                nn.Linear(self.lstm_dim + d_model + retr_dim, dec_bottleneck),
                 nn.ReLU(),
                 nn.Linear(dec_bottleneck, vocab_size),
             )
         else:
-            self.output_proj = nn.Linear(self.lstm_dim + d_model, vocab_size)
+            self.output_proj = nn.Linear(self.lstm_dim + d_model + retr_dim, vocab_size)
 
         if use_copy:
             # Copy attention over encoder states (separate from memory attention)
@@ -222,7 +257,9 @@ class LSTMDecoder(nn.Module):
 
     def forward(self, tgt: torch.Tensor, memory: torch.Tensor,
                 encoder_out: torch.Tensor | None = None,
-                src_tokens: torch.Tensor | None = None) -> torch.Tensor:
+                src_tokens: torch.Tensor | None = None,
+                retrieval_memory: torch.Tensor | None = None,
+                retrieval_pad_mask: torch.Tensor | None = None) -> torch.Tensor:
         """Teacher-forced forward pass.
 
         Args:
@@ -230,6 +267,8 @@ class LSTMDecoder(nn.Module):
             memory: (B, K_or_N, d_model) encoder/slot memory for attention
             encoder_out: ignored (kept for API compatibility)
             src_tokens: ignored (kept for API compatibility)
+            retrieval_memory: (B, M, d) flattened retrieved-target encodings, or None
+            retrieval_pad_mask: (B, M) True where padded, or None
         Returns:
             logits: (B, m, vocab_size)
         """
@@ -258,26 +297,40 @@ class LSTMDecoder(nn.Module):
         if src_tokens is not None:
             src_pad_mask = (src_tokens == self.pad_idx)  # (B, N)
 
+        # Initial retrieval context (zeros) — only used when retrieval is on
+        if self.use_retrieval:
+            retr_context = torch.zeros(B, self.d_model, device=device)
         outputs = []
         for t in range(m):
-            # Input: [embedding_t; context_t-1]
-            lstm_input = torch.cat([emb[:, t], context], dim=-1).unsqueeze(1)  # (B, 1, 2d)
+            # Input: [embedding_t; src_context_{t-1}; (retr_context_{t-1})]
+            lstm_in_parts = [emb[:, t], context]
+            if self.use_retrieval:
+                lstm_in_parts.append(retr_context)
+            lstm_input = torch.cat(lstm_in_parts, dim=-1).unsqueeze(1)
             lstm_out, (h, c) = self.lstm(lstm_input, (h, c))  # (B, 1, d)
             lstm_out = lstm_out.squeeze(1)  # (B, d)
 
             # Attention over memory (slots or encoder output)
             context, _ = self.attention(lstm_out, memory, mask=mem_pad_mask)  # (B, d)
+            # Retrieval attention head (independent of source attention).
+            if self.use_retrieval and retrieval_memory is not None:
+                retr_context, _ = self.retrieval_attention(
+                    lstm_out, retrieval_memory, mask=retrieval_pad_mask)
+
+            out_parts = [lstm_out, context]
+            if self.use_retrieval:
+                out_parts.append(retr_context)
 
             if not self.use_copy or encoder_out is None or src_tokens is None:
                 # Pure generation
                 out = self.output_proj(
-                    self.dropout(torch.cat([lstm_out, context], dim=-1))
+                    self.dropout(torch.cat(out_parts, dim=-1))
                 )  # (B, vocab)
                 outputs.append(out)
             else:
                 # Copy mechanism (Pointer-Generator for LSTM)
                 gen_logits = self.output_proj(
-                    self.dropout(torch.cat([lstm_out, context], dim=-1))
+                    self.dropout(torch.cat(out_parts, dim=-1))
                 )  # (B, vocab)
                 p_vocab = F.softmax(gen_logits, dim=-1)
 

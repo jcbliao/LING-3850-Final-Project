@@ -1,0 +1,38 @@
+# v23a: HMNT + retrieval-augmented decoder.
+# Pure teacher forcing (no DAgger) to isolate the effect of retrieval.
+# Encoder also encodes the k=5 most phonologically-similar training targets;
+# decoder attends over them via a second Bahdanau head alongside the source.
+# Implements the "exemplar route" of Pinker's dual-route theory.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: transducer
+use_slots: false
+use_copy: false
+
+# Retrieval: kNN by Levenshtein over phonological src strings; self-excluded
+# by src match (covers oversample duplicates). Index built from the unique
+# train pairs at init.
+use_retrieval: true
+retrieval_k: 5
+
+d_model: 128
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v23a_retrieval_hmnt"
+results_dir: "../results/v23a_retrieval_hmnt"
+plot_every: 5
+track_val_split: true

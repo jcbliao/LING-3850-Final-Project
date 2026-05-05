@@ -1,0 +1,46 @@
+# v26a: Transformer + copy + monotonic + class-conditional retrieval.
+#
+# Combines v20's strengths (Transformer decoder + copy mechanism + Gaussian
+# monotonic alignment bias gives 95% regulars without needing pointer-based
+# decoding) with v24a's class-conditional retrieval (~42% irregulars).
+#
+# Architecturally: TransformerCharDecoder gets a second cross-attention
+# head over flattened retrieval memory after the standard decoder stack,
+# applied as residual + LayerNorm. The existing src cross-attn + monotonic
+# copy is unchanged.
+#
+# Predicted ceiling: ~95 reg, ~45 irr → ~70 balanced. The win over v25 is
+# robustness — Transformer decoding has no pointer to drift, so we don't
+# need DAgger and don't risk the val_acc collapse we saw at β=0.01.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: transformer
+decoder_type: transformer
+use_slots: false
+use_copy: true
+mono_alpha_init: 0.5
+
+use_retrieval: true
+retrieval_k: 5
+use_class_retrieval: true
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+
+batch_size: 32
+lr: 3.0e-4
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v26a_transformer_retrieval"
+results_dir: "../results/v26a_transformer_retrieval"
+plot_every: 5
+track_val_split: true

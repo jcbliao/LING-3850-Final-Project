@@ -1,0 +1,39 @@
+# v30c: same as v30b but stronger cluster predictor signal (lambda_cluster=2.0).
+# v30b's predicted-cluster eval lost ~24pp irregular vs v27 — likely because
+# the predictor is undertrained on rare clusters (EPT=10, OUGHT=6, OTE=3).
+# Cranking the auxiliary loss weight up 4x should help the encoder learn
+# class-discriminative features for the long-tail irregular clusters.
+data_path: "../data/RevisitPinkerAndPrince/experiment_1/english_merged.txt"
+use_phonological: true
+seed: 42
+training_regime: oversample
+
+encoder_type: bilstm
+decoder_type: lstm
+use_slots: false
+use_copy: false
+
+use_retrieval: true
+retrieval_k: 5
+retrieval_mode: cluster
+use_cluster_predictor: true
+lambda_cluster: 2.0
+
+d_model: 128
+nhead: 4
+enc_layers: 2
+dec_layers: 2
+d_ff: 256
+dropout: 0.3
+lstm_hidden: 0
+
+batch_size: 32
+lr: 1.0e-3
+weight_decay: 1.0e-4
+epochs: 200
+patience: 30
+
+save_dir: "../checkpoints/v30c_strong_cluster"
+results_dir: "../results/v30c_strong_cluster"
+plot_every: 5
+track_val_split: true
